@@ -24,7 +24,6 @@ setup(
         'statsmodels>=0.14.0',
         'Pillow>=9.5.0',
         'scikit-learn>=1.3.2',
-        'tatsmodels>=0.14.0',
         'pmdarima>=2.0.4',
         'twine'
     ],
