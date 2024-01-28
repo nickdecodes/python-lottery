@@ -14,8 +14,11 @@ from setuptools import setup, find_packages
 
 setup(
     name='python-lottery',
-    version='0.4',
+    version='0.5',
     packages=find_packages(),
+    package_data={
+        'dataset': ['dataset/*']
+    },
     install_requires=[
         'selenium>=4.11.2',
         'webdriver_manager>=4.0.0',
