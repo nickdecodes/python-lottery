@@ -14,7 +14,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='python-lottery',
-    version='0.3',
+    version='0.4',
     packages=find_packages(),
     install_requires=[
         'selenium>=4.11.2',
