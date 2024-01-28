@@ -913,7 +913,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         """
         period_data = self.read_json_data_from_file(self.period_record_path, app_log=self.app_log)
         period_data = period_data.get(str(self.get_next_period()).zfill(3))
-        # period_data = period_data.get('012')
 
         maybe_combinations = self.predict_by_last_window_data(period_data, window=15)
         self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
@@ -928,7 +927,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         """
         weekday_data = self.read_json_data_from_file(self.weekday_record_path, app_log=self.app_log)
         weekday_data = weekday_data.get(str(self.get_next_weekday()))
-        # weekday_data = weekday_data.get('6')
 
         maybe_combinations = self.predict_by_last_window_data(weekday_data, window=15)
         self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
@@ -936,12 +934,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         handle_result = self.handle_last_window_data(data=weekday_data, window=15)
         self.app_log.info(handle_result)
 
-    def keep_myself_combination(self):
-        combination = (1, 6, 20, 24, 27, 4, 8)
-        self.app_log.info(combination)
-
     def predict(self):
-        self.keep_myself_combination()
         self.predict_by_last_period()
         self.predict_by_same_period()
         self.predict_by_last_weekday()
