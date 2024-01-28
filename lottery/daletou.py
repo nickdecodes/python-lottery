@@ -912,8 +912,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         """
         period_data = self.read_json_data_from_file(self.period_record_path, app_log=self.app_log)
-        # period_data = period_data.get(str(self.get_next_period()).zfill(3))
-        period_data = period_data.get('012')
+        period_data = period_data.get(str(self.get_next_period()).zfill(3))
+        # period_data = period_data.get('012')
 
         maybe_combinations = self.predict_by_last_window_data(period_data, window=15)
         self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
@@ -927,8 +927,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         """
         weekday_data = self.read_json_data_from_file(self.weekday_record_path, app_log=self.app_log)
-        # weekday_data = weekday_data.get(str(self.get_next_weekday()))
-        weekday_data = weekday_data.get('6')
+        weekday_data = weekday_data.get(str(self.get_next_weekday()))
+        # weekday_data = weekday_data.get('6')
 
         maybe_combinations = self.predict_by_last_window_data(weekday_data, window=15)
         self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
