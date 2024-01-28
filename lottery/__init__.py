@@ -3,7 +3,7 @@
 
 """
 @Author  : zhengdongqi
-@Email   : dongqi.zheng@mxplayer.in
+@Email   : nickdecodes@163.com
 @Usage   :
 @FileName: __init__.py.py
 @DateTime: 2024/1/28 18:49
