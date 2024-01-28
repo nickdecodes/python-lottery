@@ -14,10 +14,10 @@ from setuptools import setup, find_packages
 
 setup(
     name='python-lottery',
-    version='0.5',
+    version='0.6',
     packages=find_packages(),
     package_data={
-        'dataset': ['dataset/*']
+        'lottery': ['dataset/*']
     },
     install_requires=[
         'selenium>=4.11.2',

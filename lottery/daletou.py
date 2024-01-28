@@ -488,7 +488,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Parameters:
         - force: If True, files will be copied even if they already exist. Defaults to False.
         """
-        package_dataset_dir: Path = Path(__file__).resolve().parent / '../dataset/daletou'
+        package_dataset_dir: Path = Path(__file__).resolve().parent / '/dataset/daletou'
 
         for file_path in package_dataset_dir.iterdir():
             target_path = os.path.join(self.dataset_dir, file_path.name)
