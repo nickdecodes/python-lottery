@@ -9,3 +9,9 @@
 @DateTime: 2024/1/28 20:13
 @SoftWare: 
 """
+
+from lottery.daletou import Daletou
+
+if __name__ == '__main__':
+    t = Daletou()
+    t.download_data()

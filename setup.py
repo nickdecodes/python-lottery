@@ -14,11 +14,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='python-lottery',
-    version='0.6',
+    version='0.7',
     packages=find_packages(),
-    package_data={
-        'lottery': ['dataset/*']
-    },
     install_requires=[
         'selenium>=4.11.2',
         'webdriver_manager>=4.0.0',
@@ -28,6 +25,7 @@ setup(
         'Pillow>=9.5.0',
         'scikit-learn>=1.3.2',
         'pmdarima>=2.0.4',
+        'requests',
         'twine'
     ],
 )

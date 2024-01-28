@@ -14,6 +14,7 @@
 import os
 import time
 import shutil
+import requests
 from pathlib import Path
 from datetime import datetime, timedelta
 from itertools import combinations
@@ -481,23 +482,35 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     other instance method
     """
-    def load_data(self, force: bool = False) -> None:
+    def download_data(self, force: bool = False) -> None:
         """
         Copies data files to the specified target directory.
 
         Parameters:
         - force: If True, files will be copied even if they already exist. Defaults to False.
         """
-        package_dataset_dir: Path = Path(__file__).resolve().parent / '/dataset/daletou'
-
-        for file_path in package_dataset_dir.iterdir():
-            target_path = os.path.join(self.dataset_dir, file_path.name)
-
-            if not os.path.exists(target_path) or force:
-                shutil.copy(file_path, target_path)
-                print(f"Copied {file_path.name} to {target_path}")
+        def _download_file(_url, _path):
+            response = requests.get(_url)
+            if response.status_code == 200:
+                with open(_path, 'wb') as file:
+                    file.write(response.content)
+                print(f"File has been downloaded and saved as {_path}")
             else:
-                print(f"{file_path.name} already exists in {self.dataset_dir}. Use force=True to overwrite.")
+                print(f"Download failed, status code: {response.status_code}")
+
+        urls = [
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/history.csv',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/period.json',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/predict.csv',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/weekday.json'
+        ]
+        for url in urls:
+            prefix, base_name = url.rsplit('/', 1)
+            file_path = os.path.join(self.dataset_dir, base_name)
+            if not os.path.exists(file_path) or force:
+                _download_file(url, file_path)
+            else:
+                print(f"{base_name} already exists in {self.dataset_dir}. Use force=True to overwrite.")
 
     def fetch_data(self, data=None):
         """
