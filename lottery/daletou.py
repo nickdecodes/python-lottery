@@ -10,18 +10,20 @@
 @SoftWare:
 """
 
+
 import os
 import time
-import numpy as np
+import shutil
+from pathlib import Path
 from datetime import datetime, timedelta
 from itertools import combinations
 from collections import Counter, namedtuple
 from typing import List, Tuple, Any, Optional, Union, Dict, NamedTuple, Callable, Generator, Iterable
 from selenium.webdriver.common.by import By
-import util
+from .util import IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil
 
 
-class Daletou(util.IOUtil, util.ModelUtil, util.SpiderUtil, util.CalculateUtil, util.AnalyzeUtil):
+class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     # Default values for t prediction configuration
     AWARD_URL = 'https://www.lottery.gov.cn/kj/kjlb.html?dlt'
     PREDICT_NUM = 5  # Default number of t tickets to predict
@@ -103,7 +105,7 @@ class Daletou(util.IOUtil, util.ModelUtil, util.SpiderUtil, util.CalculateUtil, 
         super().__init__(**kwargs)
         self.url: str = kwargs.get('url', self.AWARD_URL)
         self.log_file: Optional[str] = kwargs.get('log_file', None)
-        self.dataset_dir: str = kwargs.get('dataset_dir', os.path.join('../t', 'dataset'))
+        self.dataset_dir: str = kwargs.get('dataset_dir', os.path.join('dataset'))
         self.predict_num: int = kwargs.get('predict_num', self.PREDICT_NUM)
         self.normal_size: int = kwargs.get('normal_size', self.NORMAL_SIZE)
         self.origin_size: int = kwargs.get('origin_size', self.ORIGIN_SIZE)
@@ -479,6 +481,24 @@ class Daletou(util.IOUtil, util.ModelUtil, util.SpiderUtil, util.CalculateUtil, 
     """
     other instance method
     """
+    def load_data(self, force: bool = False) -> None:
+        """
+        Copies data files to the specified target directory.
+
+        Parameters:
+        - force: If True, files will be copied even if they already exist. Defaults to False.
+        """
+        package_dir: Path = Path(__file__).resolve().parent / '../dataset'
+
+        for file_path in package_dir.iterdir():
+            target_path = os.path.join(self.dataset_dir, file_path.name)
+
+            if not os.path.exists(target_path) or force:
+                shutil.copy(file_path, target_path)
+                print(f"Copied {file_path.name} to {target_path}")
+            else:
+                print(f"{file_path.name} already exists in {self.dataset_dir}. Use force=True to overwrite.")
+
     def fetch_data(self, data=None):
         """
         fetch data. then update dataset
@@ -928,12 +948,3 @@ class Daletou(util.IOUtil, util.ModelUtil, util.SpiderUtil, util.CalculateUtil, 
 
     def test(self):
         pass
-
-
-if __name__ == '__main__':
-    daletou = Daletou()
-    # data = daletou.read_csv_data_from_file(daletou.history_record_path)
-    # daletou.fetch_data(data)
-    # daletou.fetch_data()
-    daletou.predict()
-    # daletou.test()
