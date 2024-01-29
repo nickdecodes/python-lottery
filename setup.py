@@ -13,9 +13,14 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='python-lottery',
-    version='0.8',
+    name='lottokit',
+    version='0.1',
+    keywords=['lottokit', 'lottery'],
     packages=find_packages(),
+    author="nickdecodes",
+    author_email="nickdecodes@163.com",
+    description="Lotto Kit Package",
+    python_requires=">=3.6",
     install_requires=[
         'selenium>=4.11.2',
         'webdriver_manager>=4.0.0',

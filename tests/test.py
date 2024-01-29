@@ -10,7 +10,7 @@
 @SoftWare: 
 """
 
-from lottery.daletou import Daletou
+from lottokit.daletou import Daletou
 
 if __name__ == '__main__':
     t = Daletou()

@@ -1,5 +1,5 @@
-# python-lottery
-python-lottery
+# LottoKit
+Lotto Kit Package
 
 ```bash
 python setup.py sdist bdist_wheel # build package
