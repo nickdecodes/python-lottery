@@ -499,10 +499,10 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 print(f"Download failed, status code: {response.status_code}")
 
         urls = [
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_history.csv',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_period.json',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_predict.csv',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_weekday.json'
+            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_history.csv',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_period.json',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_predict.csv',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_weekday.json'
         ]
         for url in urls:
             prefix, base_name = url.rsplit('/', 1)
