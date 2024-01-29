@@ -128,10 +128,10 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         self.app_log = self.get_logger(self.log_file)
         if not os.path.exists(self.dataset_dir):
             os.makedirs(self.dataset_dir)
-        self.history_record_path = os.path.join(self.dataset_dir, 'history.csv')
-        self.predict_record_path = os.path.join(self.dataset_dir, 'predict.csv')
-        self.period_record_path = os.path.join(self.dataset_dir, 'period.json')
-        self.weekday_record_path = os.path.join(self.dataset_dir, 'weekday.json')
+        self.history_record_path = os.path.join(self.dataset_dir, 'daletou_history.csv')
+        self.predict_record_path = os.path.join(self.dataset_dir, 'daletou_predict.csv')
+        self.period_record_path = os.path.join(self.dataset_dir, 'daletou_period.json')
+        self.weekday_record_path = os.path.join(self.dataset_dir, 'daletou_weekday.json')
         self.consecutive_record_path = os.path.join(self.dataset_dir, 'consecutive.json')
         self.repeated_record_path = os.path.join(self.dataset_dir, 'repeated.json')
         self.edge_record_path = os.path.join(self.dataset_dir, 'edge.json')
@@ -499,10 +499,10 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 print(f"Download failed, status code: {response.status_code}")
 
         urls = [
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/history.csv',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/period.json',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/predict.csv',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou/weekday.json'
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_history.csv',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_period.json',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_predict.csv',
+            'https://raw.githubusercontent.com/nickdecodes/python-lottery/main/dataset/daletou_weekday.json'
         ]
         for url in urls:
             prefix, base_name = url.rsplit('/', 1)
