@@ -17,9 +17,13 @@ setup(
     version='0.1',
     keywords=['lottokit', 'lottery'],
     packages=find_packages(),
+    package_data={"": ["LICENSE", "NOTICE"]},
+    include_package_data=True,
     author="nickdecodes",
     author_email="nickdecodes@163.com",
     description="Lotto Kit Package",
+    long_description=readme,
+    long_description_content_type="text/markdown",
     python_requires=">=3.6",
     install_requires=[
         'selenium>=4.11.2',
@@ -33,4 +37,8 @@ setup(
         'requests',
         'twine'
     ],
+    project_urls={
+        "Documentation": "https://requests.readthedocs.io",
+        "Source": "https://github.com/nickdecodes/python-lottokit",
+    },
 )

@@ -1,8 +1,20 @@
 # LottoKit
-Lotto Kit Package
+Lotto Kit Package is A simple lottery analysis kit
 
-```bash
-python setup.py sdist bdist_wheel # build package
-twine upload dist/* # upload package
+```python
+>>> from lottokit import Daletou
+>>> t = Daletou()
+>>> t.download_data()
+>>> t.fetch_data()
+>>> t.predict()
+>>>
 ```
 
+# Installing LottoKit and Supported Versions
+Requests is available on PyPI:
+```bash
+python -m pip install requests
+```
+Requests officially supports Python 3.7+.
+
+# API Reference and User Guide available on Read the Docs
