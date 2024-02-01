@@ -13,8 +13,8 @@ Lotto Kit Package is A simple lottery analysis kit
 # Installing LottoKit and Supported Versions
 LottoKit is available on PyPI:
 ```bash
-python -m pip install requests
+python -m pip install lottokit
 ```
-LottoKit officially supports Python 3.7+.
+LottoKit officially supports Python 3.6+.
 
 # API Reference and User Guide available on Read the Docs
