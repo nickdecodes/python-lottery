@@ -1,18 +1,10 @@
-# !/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """
-@Author  : nickdecodes
-@Email   : nickdecodes@163.com
-@Usage   : 
-@Filename: lumache.py
-@DateTime: 2024/02/01 22:39
-@Software:
 Lumache - Python library for cooks and food lovers.
 
 This is a Python docstring, we can use Markdown syntax here because
 our API documentation library understands it (mkdocstrings).
 
+    # Import lumache
     import lumache
 
     # Call its only function
