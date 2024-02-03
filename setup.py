@@ -14,7 +14,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='lottokit',
-    version='0.1',
+    version='0.2',
     keywords=['lottokit', 'lottery'],
     packages=find_packages(),
     package_data={"": ["LICENSE", "NOTICE"]},
@@ -39,7 +39,7 @@ setup(
         'twine'
     ],
     project_urls={
-        "Documentation": "https://requests.readthedocs.io",
+        "Documentation": "http://python-lottokit.readthedocs.io",
         "Source": "https://github.com/nickdecodes/python-lottokit",
     },
 )
