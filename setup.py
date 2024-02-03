@@ -34,7 +34,6 @@ setup(
         'Pillow>=9.5.0',
         'scikit-learn>=1.3.2',
         'pmdarima>=2.0.4',
-        'mkdocs>=1.5.3'
         'requests',
         'twine'
     ],
