@@ -378,7 +378,7 @@ This constructor initializes the `SpiderUtil` object with a URL. If the URL is n
 spider = SpiderUtil(url='https://example.com/data')
 ```
 
-# Method: spider_chrome_driver
+## Method: spider_chrome_driver
 
 Initialize a Chrome WebDriver with headless option and navigate to the URL.
 
@@ -397,7 +397,7 @@ driver = spider.spider_chrome_driver()
 # Use the driver to interact with the web page
 ```
 
-# Abstract Method: spider_recent_data
+## Abstract Method: spider_recent_data
 
 Fetch the recent data from the web page.
 
@@ -416,7 +416,7 @@ recent_data = spider.spider_recent_data()
 print(recent_data)
 ```
 
-# Abstract Method: spider_latest_data
+## Abstract Method: spider_latest_data
 
 Fetch the latest single data entry.
 
@@ -438,7 +438,7 @@ else:
     print("No data available.")
 ```
 
-# Method: spider_full_data
+## Method: spider_full_data
 
 Load the full set of data from the source.
 
@@ -733,7 +733,7 @@ common_numbers = CalculateUtil.calculate_repeated_numbers(number_combinations, w
 print(common_numbers)
 ```
 
-# Class Method: calculate_edge_numbers
+## Class Method: calculate_edge_numbers
 
 Calculate 'edge numbers' which are present in consecutive iterables where each number from the first iterable is either one less or one more than the numbers in the following iterable.
 
@@ -842,92 +842,117 @@ Analyze based on multiple data.
 
 Analyze same period number in the last period.
 
-#### Parameters:
+### Parameters:
 - `kwargs` (Any): Additional keyword arguments.
 
-#### Returns:
+### Returns:
 - `None`
 
-#### Description:
+### Description:
 This abstract method analyzes the same period number in the last period. It does not return any value.
 
-#### Example Usage:
+### Example Usage:
 ```python
 # Analyze same period number in the last period
 analyze_util = AnalyzeUtilImplementation()
 analyze_util.analyze_same_period_numbers()
 ```
 
-### Abstract Method: analyze_same_weekday_numbers
+## Abstract Method: analyze_same_weekday_numbers
 
 Analyze same weekday number in the last period.
 
-#### Parameters:
+### Parameters:
 - `kwargs` (Any): Additional keyword arguments.
 
-#### Returns:
+### Returns:
 - `None`
 
-#### Description:
+### Description:
 This abstract method analyzes the same weekday number in the last period. It does not return any value.
 
-### Abstract Method: analyze_repeated_numbers
+## Abstract Method: analyze_repeated_numbers
 
 Analyze the number that appeared twice in the last two periods.
 
-#### Parameters:
+### Parameters:
 - `kwargs` (Any): Additional keyword arguments.
 
-#### Returns:
+### Returns:
 - `None`
 
-#### Description:
+### Description:
 This abstract method analyzes the numbers that appeared twice in the last two periods. It does not return any value.
 
-### Abstract Method: analyze_edge_numbers
+## Abstract Method: analyze_edge_numbers
 
 Analyze adjacent numbers, plus or minus 1 with the winning number issued in the previous period.
 
-#### Parameters:
+### Parameters:
 - `kwargs` (Any): Additional keyword arguments.
 
-#### Returns:
+### Returns:
 - `None`
 
-#### Description:
+### Description:
 This abstract method analyzes adjacent numbers, plus or minus 1 with the winning number issued in the previous period. It does not return any value.
 
-### Abstract Method: analyze_cold_hot_numbers
+## Abstract Method: analyze_cold_hot_numbers
 
 Analyze numbers that have appeared in the last period and numbers that have not appeared in the last period.
 
-#### Parameters:
+### Parameters:
 - `kwargs` (Any): Additional keyword arguments.
 
-#### Returns:
+### Returns:
 - `None`
 
-#### Description:
+### Description:
 This abstract method analyzes numbers that have appeared in the last period and numbers that have not appeared in the last period. It does not return any value.
 
-### Abstract Method: analyze_omitted_numbers
+## Abstract Method: analyze_omitted_numbers
 
 Analyze the omission statistics for numbers.
 
-#### Parameters:
+### Parameters:
 - `kwargs` (Any): Additional keyword arguments.
 
-#### Returns:
+### Returns:
 - `None`
 
-#### Description:
+### Description:
 This abstract method analyzes the omission statistics for numbers. It covers various aspects such as the number of periods since the previous opening to the current period, average omission, maximum missed value, current omission, previous period omission, theoretical number, and desired probability. It does not return any value.
 
 
+# Class: Daletou
 
+A class for handling Daletou lottery data analysis and prediction.
 
+### Inherited Classes:
+- `IOUtil`
+- `ModelUtil`
+- `SpiderUtil`
+- `CalculateUtil`
+- `AnalyzeUtil`
 
+### Attributes:
+- `AWARD_URL` (str): The default URL for fetching data.
+- `PREDICT_NUM` (int): The default number of predictions to make.
+- `NORMAL_SIZE` (int): The length of normal winning numbers.
+- `ORIGIN_SIZE` (int): The length of historical record data.
+- `AWARD_RULES` (Dict): The prize rules for Super Lotto.
 
+### Methods:
+- `__init__(**kwargs)`: Initialize the Daletou object with configuration parameters.
+
+### Description:
+This class provides functionality for analyzing and predicting Daletou lottery data. It inherits methods from `IOUtil`, `ModelUtil`, `SpiderUtil`, `CalculateUtil`, and `AnalyzeUtil`. It contains attributes for default URL, prediction number, sizes of winning numbers, prize rules, and various configurations for front and back areas. The `__init__` method initializes the Daletou object with the provided configuration parameters.
+
+### Example Usage:
+```python
+# Initialize the Daletou object
+daletou = Daletou(url='https://www.example.com', log_file='daletou.log', dataset_dir='./data', predict_num=10)
+```
 
 
 
