@@ -924,35 +924,6 @@ Analyze the omission statistics for numbers.
 This abstract method analyzes the omission statistics for numbers. It covers various aspects such as the number of periods since the previous opening to the current period, average omission, maximum missed value, current omission, previous period omission, theoretical number, and desired probability. It does not return any value.
 
 
-# Class: Daletou
-
-A class for handling Daletou lottery data analysis and prediction.
-
-### Inherited Classes:
-- `IOUtil`
-- `ModelUtil`
-- `SpiderUtil`
-- `CalculateUtil`
-- `AnalyzeUtil`
-
-### Attributes:
-- `AWARD_URL` (str): The default URL for fetching data.
-- `PREDICT_NUM` (int): The default number of predictions to make.
-- `NORMAL_SIZE` (int): The length of normal winning numbers.
-- `ORIGIN_SIZE` (int): The length of historical record data.
-- `AWARD_RULES` (Dict): The prize rules for Super Lotto.
-
-### Methods:
-- `__init__(**kwargs)`: Initialize the Daletou object with configuration parameters.
-
-### Description:
-This class provides functionality for analyzing and predicting Daletou lottery data. It inherits methods from `IOUtil`, `ModelUtil`, `SpiderUtil`, `CalculateUtil`, and `AnalyzeUtil`. It contains attributes for default URL, prediction number, sizes of winning numbers, prize rules, and various configurations for front and back areas. The `__init__` method initializes the Daletou object with the provided configuration parameters.
-
-### Example Usage:
-```python
-# Initialize the Daletou object
-daletou = Daletou(url='https://www.example.com', log_file='daletou.log', dataset_dir='./data', predict_num=10)
-```
 
 
 
