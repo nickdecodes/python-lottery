@@ -169,7 +169,7 @@ Reads CSV data from a file and returns a list of rows.
 #### Description:
 This method reads the CSV data from the specified file and returns a list of rows. If no logger is provided, it uses the default logger obtained from the `get_logger` method. It attempts to open the file in the specified mode and reads the CSV data using the `csv.reader` class. It then returns the list of rows. If an error occurs during the read operation, it logs the exception and returns None.
 
-### Example Usage:
+#### Example Usage:
 ```python
 # Read CSV data from a file
 data = IOUtil.read_csv_data_from_file('input.csv')
@@ -438,7 +438,7 @@ else:
     print("No data available.")
 ```
 
-### Method: spider_full_data
+### Abstract Method: spider_full_data
 
 Load the full set of data from the source.
 
@@ -448,7 +448,7 @@ Load the full set of data from the source.
 #### Description:
 This method is responsible for loading the full set of data from the source. Subclasses should provide their own implementation to fetch and return the complete data set from the source.
 
-### Example Usage:
+#### Example Usage:
 ```python
 # Initialize a SpiderUtil object with a custom URL
 spider = SpiderUtil(url='https://example.com/data')
@@ -457,7 +457,7 @@ full_data = spider.spider_full_data()
 print(full_data)
 ```
 
-### Class: CalculateUtil
+## Class: CalculateUtil
 
 The `CalculateUtil` class provides methods for computing features based on single or multiple data points.
 
@@ -588,7 +588,7 @@ Calculate the span of a sequence of numbers provided in the `number_combination`
 #### Returns:
 - `int`: The span of the numbers in the `number_combination` as an integer. If the input contains floating point numbers, the span is cast to an integer before being returned.
 
-### Description:
+#### Description:
 This method calculates the span of a sequence of numbers provided in the `number_combination`. It finds the maximum and minimum values in the collection and calculates the difference (span) between them. The span is then returned as an integer. If the input contains floating-point numbers, the span is cast to an integer before being returned.
 
 #### Example Usage:
