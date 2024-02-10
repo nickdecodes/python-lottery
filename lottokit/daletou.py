@@ -13,15 +13,12 @@
 
 import os
 import time
-import shutil
-import requests
-from pathlib import Path
 from datetime import datetime, timedelta
 from itertools import combinations
 from collections import Counter, namedtuple
 from typing import List, Tuple, Any, Optional, Union, Dict, NamedTuple, Callable, Generator, Iterable
 from selenium.webdriver.common.by import By
-from .util import IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil
+from .util import IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil, re, WebDriverWait, EC
 
 
 class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
@@ -174,6 +171,50 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         """
         recent_data = self.spider_recent_data()
         return recent_data[0] if recent_data else None
+
+    def spider_full_data(self) -> List[List[str]]:
+        """
+        Load the full set of data from the source.
+
+        :return: A list of lists containing all data entries.
+        """
+        # The implementation should be provided by the subclass.
+        full_data = []
+        driver = self.spider_chrome_driver()
+        time.sleep(1)  # Allow time for the page to load
+        frame = driver.find_element(By.XPATH, '//iframe[@id="iFrame1"]')
+        driver.switch_to.frame(frame)
+        matches = re.findall(r'goNextPage\((\d+)\)', driver.page_source)
+        page_index = [int(match) for match in matches]
+        for index in range(max(page_index)):
+            # wait data load
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, '//tbody[@id="historyData"]'))
+            )
+
+            # extract data
+            content = driver.find_element(By.XPATH, '//tbody[@id="historyData"]')
+            full_data.extend([x.split()[:9] for x in content.text.split('\n') if len(x.split()) >= 9])
+
+            # wait next page load
+            try:
+                # try to find element of position == 13
+                next_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div[3]/ul/li[position()=13]"))
+                )
+            except Exception as ex:
+                # try to find element of position == 8
+                next_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div[3]/ul/li[position()=8]"))
+                )
+
+            # click to next page
+            next_button.click()
+            time.sleep(3)  # loading
+        driver.quit()
+        sorted_full_data = sorted(full_data, key=lambda x: int(x[0]))
+
+        return sorted_full_data
 
     """
     A pure virtual method inherited from util.AnalyzeUtil
@@ -484,33 +525,19 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     def download_data(self, force: bool = False) -> None:
         """
-        Copies data files to the specified target directory.
+        spider full data and save data to history record file
 
         Parameters:
-        - force: If True, files will be copied even if they already exist. Defaults to False.
+        - force: If True, files will write even if they already exist. Defaults to False.
         """
-        def _download_file(_url, _path):
-            response = requests.get(_url)
-            if response.status_code == 200:
-                with open(_path, 'wb') as file:
-                    file.write(response.content)
-                print(f"File has been downloaded and saved as {_path}")
-            else:
-                print(f"Download failed, status code: {response.status_code}")
 
-        urls = [
-            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_history.csv',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_period.json',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_predict.csv',
-            'https://raw.githubusercontent.com/nickdecodes/python-lottokit/main/dataset/daletou_weekday.json'
-        ]
-        for url in urls:
-            prefix, base_name = url.rsplit('/', 1)
-            file_path = os.path.join(self.dataset_dir, base_name)
-            if not os.path.exists(file_path) or force:
-                _download_file(url, file_path)
-            else:
-                print(f"{base_name} already exists in {self.dataset_dir}. Use force=True to overwrite.")
+        if not os.path.exists(self.history_record_path) or force:
+            history_data = self.spider_full_data()
+            self.write_csv_data_to_file(self.history_record_path, data=history_data, app_log=self.app_log)
+            self.analyze_same_period_numbers(history_data)
+            self.analyze_same_weekday_numbers(history_data)
+        else:
+            print(f"{self.history_record_path} already exists in {self.dataset_dir}. Use force=True to overwrite.")
 
     def fetch_data(self, data=None):
         """
