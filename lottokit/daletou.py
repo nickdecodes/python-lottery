@@ -186,7 +186,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         driver.switch_to.frame(frame)
         matches = re.findall(r'goNextPage\((\d+)\)', driver.page_source)
         page_index = [int(match) for match in matches]
+        self.app_log.info(f'total pages: {max(page_index)} need to spider')
         for index in range(max(page_index)):
+            self.app_log.info(f'spider page {index + 1}')
             # wait data load
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, '//tbody[@id="historyData"]'))
@@ -533,6 +535,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         if not os.path.exists(self.history_record_path) or force:
             history_data = self.spider_full_data()
+            self.app_log.info(f'is saving history record to {self.history_record_path}')
             self.write_csv_data_to_file(self.history_record_path, data=history_data, app_log=self.app_log)
             self.analyze_same_period_numbers(history_data)
             self.analyze_same_weekday_numbers(history_data)
