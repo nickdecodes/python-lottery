@@ -160,7 +160,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         frame = driver.find_element(By.XPATH, '//iframe[@id="iFrame1"]')
         driver.switch_to.frame(frame)
         content = driver.find_element(By.XPATH, '//tbody[@id="historyData"]')
-        recent_data = [x.split(' ')[:9] for x in content.text.split('\n')]
+        recent_data = [x.split(' ')[:9] for x in content.text.split('\n') if len(x.split(' ')) > 9]
         return recent_data
 
     def spider_latest_data(self) -> Optional[List[str]]:
