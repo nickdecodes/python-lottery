@@ -205,7 +205,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                     EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div[3]/ul/li[position()=13]"))
                 )
             except Exception as ex:
-                self.app_log.info(ex)
+                # self.app_log.info(ex)
                 # try to find element of position == 8
                 next_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div[3]/ul/li[position()=8]"))
@@ -671,7 +671,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 back=self.calculate_back(data)
             )
         except Exception as ex:
-            self.app_log.info(ex)
+            # self.app_log.info(ex)
             # If there is an error, create a Lottery with the raw data
             # Ensure that 'data' can be unpacked into the Lottery named tuple
             return self.Lottery(*data)
