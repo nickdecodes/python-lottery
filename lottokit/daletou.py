@@ -205,6 +205,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                     EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div[3]/ul/li[position()=13]"))
                 )
             except Exception as ex:
+                self.app_log.info(ex)
                 # try to find element of position == 8
                 next_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, "/html/body/div/div/div[3]/ul/li[position()=8]"))
@@ -670,6 +671,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 back=self.calculate_back(data)
             )
         except Exception as ex:
+            self.app_log.info(ex)
             # If there is an error, create a Lottery with the raw data
             # Ensure that 'data' can be unpacked into the Lottery named tuple
             return self.Lottery(*data)
@@ -852,8 +854,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         for feature, item in feature_results.items():
             for region, matrix in item.items():
                 # Transpose the matrix to iterate over columns (sequences)
-                # matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
-                matrix_flip = list(map(list, zip(*matrix)))
+                # matrix_flip = list(map(list, zip(*matrix)))
+                matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
 
                 for predictor in [
                     self.moving_average,
@@ -918,7 +920,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         matrix = [d.front + d.back for d in last_window_data]
 
         # Transpose the matrix
-        matrix_flip = list(map(list, zip(*matrix)))
+        matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
 
         # Apply the transposed matrix to each predictor and generate predictions
         predictions = [
@@ -935,52 +937,124 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             for d in predictions
         ]
 
-    def predict_by_last_period(self):
+    def predict_by_last_period(self, next_period: int = None, show_details: bool = False) -> List[List[int]]:
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
+        :param next_period: int eg: 24001
+        :param show_details: boolean flag to output details about the prediction
         """
         history_data = self.read_csv_data_from_file(self.history_record_path, app_log=self.app_log)
-        history_data = history_data[:]
+        if next_period is None:
+            history_data = history_data[:]
+        else:
+            index = next((i for i, sublist in enumerate(history_data) if sublist[0] == str(next_period)), -1)
+            history_data = history_data[:index] if index != -1 else history_data[:]
 
         maybe_combinations = self.predict_by_last_window_data(history_data, window=15)
-        self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
+        predict_data = [mc.front + mc.back for mc in maybe_combinations]
+        self.app_log.info(predict_data) if show_details is True else None
 
         handle_result = self.handle_last_window_data(data=history_data, window=15)
-        self.app_log.info(handle_result)
+        self.app_log.info(handle_result) if show_details is True else None
 
-    def predict_by_same_period(self):
+        return predict_data
+
+    def predict_by_same_period(self, next_period: int = None, show_details: bool = False) -> List[List[int]]:
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
+        :param next_period: int eg: 24001
+        :param show_details: boolean flag to output details about the prediction
         """
         period_data = self.read_json_data_from_file(self.period_record_path, app_log=self.app_log)
-        period_data = period_data.get(str(self.get_next_period()).zfill(3))
+        if next_period is None:
+            period_data = period_data.get(str(self.get_next_period()).zfill(3))
+        else:
+            period_data = period_data.get(str(next_period % 100).zfill(3))
+            index = next((i for i, sublist in enumerate(period_data) if sublist[0] == str(next_period)), -1)
+            period_data = period_data[:index] if index != -1 else period_data[:]
 
         maybe_combinations = self.predict_by_last_window_data(period_data, window=15)
-        self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
+        predict_data = [mc.front + mc.back for mc in maybe_combinations]
+        self.app_log.info(predict_data) if show_details is True else None
 
         handle_result = self.handle_last_window_data(data=period_data, window=15)
-        self.app_log.info(handle_result)
+        self.app_log.info(handle_result) if show_details is True else None
 
-    def predict_by_last_weekday(self):
+        return predict_data
+
+    def predict_by_last_weekday(self,
+                                next_weekday: int = None,
+                                next_period: int = None,
+                                show_details: bool = False) -> List[List[int]]:
         """
         Predicts features by the last weekday window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
+        :param next_weekday: int eg: [1 | 3 | 6]
+        :param next_period: int eg: 24001
+        :param show_details: boolean flag to output details about the prediction
         """
         weekday_data = self.read_json_data_from_file(self.weekday_record_path, app_log=self.app_log)
-        weekday_data = weekday_data.get(str(self.get_next_weekday()))
+        if next_weekday is None:
+            weekday_data = weekday_data.get(str(self.get_next_weekday()))
+        else:
+            weekday_data = weekday_data.get(str(next_weekday))
+            if next_period is not None:
+                index = next((i for i, sublist in enumerate(weekday_data) if sublist[0] == str(next_period)), -1)
+                weekday_data = weekday_data[:index] if index != -1 else weekday_data[:]
 
         maybe_combinations = self.predict_by_last_window_data(weekday_data, window=15)
-        self.app_log.info([mc.front + mc.back for mc in maybe_combinations])
+        predict_data = [mc.front + mc.back for mc in maybe_combinations]
+        self.app_log.info(predict_data) if show_details is True else None
 
         handle_result = self.handle_last_window_data(data=weekday_data, window=15)
-        self.app_log.info(handle_result)
+        self.app_log.info(handle_result) if show_details is True else None
 
-    def predict(self):
-        self.predict_by_last_period()
-        self.predict_by_same_period()
-        self.predict_by_last_weekday()
+        return predict_data
+
+    def predict(self, next_period: int = None, next_weekday: int = None, show_details: bool = False) -> List[List[int]]:
+        """
+        :param next_period: int eg: 24001
+        :param next_weekday: int eg: [1 | 3 | 6]
+        :param show_details: boolean flag to output details about the prediction
+        """
+        predict_data = []
+        predict_data.extend(self.predict_by_last_period(next_period=next_period,
+                                                        show_details=show_details))
+        predict_data.extend(self.predict_by_same_period(next_period=next_period,
+                                                        show_details=show_details))
+        predict_data.extend(self.predict_by_last_weekday(next_weekday=next_weekday,
+                                                         next_period=next_period,
+                                                         show_details=show_details))
+
+        if show_details is True:
+            self.app_log.info("The following is a preliminary forecast of the data analysis : ")
+            # Splitting the data into first 5 and last 2 numbers
+            front_zone = [num for row in predict_data for num in row[:5]]
+            back_zone = [num for row in predict_data for num in row[5:]]
+
+            # Counting occurrences
+            front_zone_frequency = Counter(front_zone)
+            back_zone_frequency = Counter(back_zone)
+
+            # Sorting the counts
+            sorted_front_zone_frequency = sorted(front_zone_frequency.items(), key=lambda x: x[1], reverse=True)
+            sorted_back_zone_frequency = sorted(back_zone_frequency.items(), key=lambda x: x[1], reverse=True)
+
+            # Printing the results
+            print("Counts of the front zone numbers in each row sorted by frequency:")
+            for number, count in sorted_front_zone_frequency:
+                print(f"Number {number}: {count} times")
+
+            print("\nCounts of the back zone numbers in each row sorted by frequency:")
+            for number, count in sorted_back_zone_frequency:
+                print(f"Number {number}: {count} times")
+
+            self.app_log.info("\nHere are the preliminary predictions: ")
+            for data in predict_data:
+                self.app_log.info(','.join(map(str, data)))
+        return predict_data
 
     def test(self):
         pass
