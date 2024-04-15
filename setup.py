@@ -27,7 +27,7 @@ setup(
     description="Lotto Kit Package",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    python_requires=">=3.6",
+    python_requires=">=3.9",
     install_requires=[
         'selenium>=4.11.2',
         'webdriver_manager>=4.0.0',
