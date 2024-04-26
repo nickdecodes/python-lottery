@@ -236,12 +236,13 @@ data = IOUtil.read_json_data_from_file('input.json', app_log=logger, mode='r', e
 
 The `ModelUtil` class provides utility methods for handling and analyzing numerical data.
 
-### Method: moving_average
+### Method: exponential_moving_average_next_value
 
-Calculates the Exponential Moving Average (EMA) of a given numeric sequence.
+Calculate the Exponential Moving Average (EMA) of a given numeric sequence.
 
 #### Parameters:
 - `numeric_sequence` (List[int]): A list or sequence of numbers for which the EMA is to be calculated.
+- `param span:` The number of periods over which to calculate the EMA. Default is 5.
 
 #### Returns:
 - `int`: The EMA value as an integer.
@@ -252,11 +253,11 @@ This method calculates the Exponential Moving Average (EMA) of the provided nume
 #### Example Usage:
 ```python
 # Calculate the EMA of a numeric sequence
-ema_value = ModelUtil.moving_average([10, 15, 20, 25, 30])
+ema_value = ModelUtil.exponential_moving_average_next_value([10, 15, 20, 25, 30])
 print(f"The EMA value is: {ema_value}")
 ```
 
-### Method: linear_regression
+### Method: linear_regression_next_value_by_index
 
 Predicts the next value in a sequence using linear regression.
 
@@ -272,11 +273,37 @@ This method uses linear regression to predict the next value in a given sequence
 #### Example Usage:
 ```python
 # Predict the next value in a sequence using linear regression
-next_value = ModelUtil.linear_regression([10, 15, 20, 25, 30])
+next_value = ModelUtil.linear_regression_next_value_by_index([10, 15, 20, 25, 30])
 print(f"The predicted next value is: {next_value}")
 ```
 
-### Method: harmonic_regression
+### Method: multivariate_polynomial_regression_next_value
+
+Predicts the next value in a numeric sequence using multivariate polynomial regression.
+
+#### Parameters:
+
+- `numeric_sequence` (List[int]): A list or sequence of numbers to model.
+- `rolling_size (int):` The number of elements in each rolling window.
+- `degrees (int):` The degree of the polynomial regression. Defaults to 3.
+
+#### Returns:
+
+- `float:` The predicted next value in the sequence.
+
+#### Description:
+
+This method applies a polynomial regression model to a numeric sequence to predict the next value. It utilizes a rolling window approach to create datasets, scales the features, and fits a polynomial regression model to make the prediction.
+
+#### Example Usage:
+
+```python
+# Predict the next value in a sequence using harmonic regression
+next_value = ModelUtil.multivariate_polynomial_regression_next_value([10, 15, 20, 25, 30], rolling_size=3, degrees=2)
+print(f"The predicted next value is: {next_value}")
+```
+
+### Method: harmonic_regression_next_value_by_index
 
 Predicts the next value in a sequence using harmonic regression.
 
@@ -293,11 +320,52 @@ This method predicts the next value in a given sequence of numbers by fitting a 
 #### Example Usage:
 ```python
 # Predict the next value in a sequence using harmonic regression
-next_value = ModelUtil.harmonic_regression([10, 15, 20, 25, 30], frequency=0.5)
+next_value = ModelUtil.harmonic_regression_next_value_by_index([10, 15, 20, 25, 30], frequency=0.5)
 print(f"The predicted next value is: {next_value}")
 ```
 
-### Method: random_forest_regressor
+### Method: random_forest_regressor_next_value
+
+Predicts the next value in a numeric sequence using a Random Forest Regressor model.
+
+#### Parameters:
+- `numeric_sequence (List[int]):` The list of integers representing the sequence.
+- `rolling_size (int):` The number of elements in each rolling window.
+- `warm_start (bool):` Whether to reuse the solution of the previous call to fit and add more estimators to the ensemble.
+- `random_state (int):` Controls both the randomness of the bootstrapping of the samples used when building trees
+                                    (if `bootstrap=True`) and the sampling of the features to consider when looking for the best split at each node.
+-  `param_distributions (Optional[Dict]):` The distribution of parameters to try in randomized search.
+                                                    eg: {
+                                                        'n_estimators': stats.randint(100, 500),
+                                                        'max_depth': [None, ] + [i for i in range(10, 100)],
+                                                        'max_features': ['sqrt', 'log2'],
+                                                        'min_samples_split': stats.randint(2, 80),
+                                                        'min_samples_leaf': stats.randint(1, 40)
+                                                    }
+- `param_overrides (Optional[Dict]):` Additional parameters for the RandomizedSearchCV.
+                                                    eg: {
+                                                        'n_iter': 100,
+                                                        'cv': 3,
+                                                        'scoring': 'neg_mean_squared_error',
+                                                        'verbose': 0,
+                                                        'random_state': 12,
+                                                        'n_jobs': -1
+                                                    }
+
+#### Returns:
+- `float:` The predicted next value in the sequence.
+
+#### Description:
+This method uses a Random Forest Regressor to predict the next value in a sequence based on the values in a rolling window. The sequence is first transformed into a dataset suitable for regression by creating overlapping windows of specified size.
+
+#### Example Usage:
+```python
+# Predict the next value in a sequence using a Random Forest Regressor
+next_value = ModelUtil.random_forest_regressor_next_value([10, 15, 20, 25, 30], rolling_size=3)
+print(f"The predicted next value is: {next_value}")
+```
+
+### Method: random_forest_regressor_next_value_by_index
 
 Predicts the next value in a sequence using a Random Forest Regressor.
 
@@ -316,6 +384,7 @@ This method predicts the next value in a given sequence of numbers using a Rando
 next_value = ModelUtil.random_forest_regressor([10, 15, 20, 25, 30])
 print(f"The predicted next value is: {next_value}")
 ```
+
 
 ### Method: relative_strength_index
 
@@ -338,7 +407,7 @@ rsi_value = ModelUtil.relative_strength_index([50, 55, 60, 57, 62, 58, 63, 65, 7
 print(f"The calculated RSI value is: {rsi_value}")
 ```
 
-### Method: seasonal_autoregressive_integrated_moving_average
+### Method: seasonal_autoregressive_integrated_moving_average_next_value
 
 Fit a Seasonal Autoregressive Integrated Moving Average (SARIMA) model to the provided time series data and predict the next value in the series.
 
@@ -460,6 +529,36 @@ print(full_data)
 ## Class: CalculateUtil
 
 The `CalculateUtil` class provides methods for computing features based on single or multiple data points.
+
+### Class Method: generate_datasets_with_rolling_size
+
+Generates sequential test and validation datasets from a list of integers. It optionally adjusts test datasets by removing extreme values.
+
+#### Parameters:
+
+- `data (List[int]):` The input data list from which datasets are generated.
+- `rolling_size (int):` The number of elements in each test set. Defaults to 5.
+- `adjust (bool):` Whether to remove the maximum and minimum values from each test set. Defaults to False.
+
+#### Returns:
+
+- `Tuple[List[List[int]], List[int]]:` A tuple containing two lists:
+       - The first list contains the test sets, possibly adjusted.
+       -  list contains the single-element validation sets.
+
+#### Description:
+
+The function iterates over the data to create overlapping test sets of a specified size. Each test set is  followed by a validation set which is the next single element in the list. If the 'adjust' flag is True,  the maximum and minimum values are removed from each test set.
+
+#### Example Usage:
+
+```python
+# Calculate the counts of numbers within predefined zones
+number_combination = [10, 15, 20, 25, 30]
+zone_ranges = [(0, 15), (16, 25), (26, 35)]
+zone_counts = CalculateUtil.calculate_zone_ratio(number_combination, zone_ranges)
+print(zone_counts)
+```
 
 ### Class Method: calculate_zone_ratio
 
@@ -807,6 +906,31 @@ number_combinations = [[1, 2, 3], [4, 5, 6], [2, 3, 4], [7, 8, 9], [1, 2, 3], [4
 all_numbers = range(1, 10)
 omission_values = CalculateUtil.calculate_omitted_numbers(number_combinations, all_numbers, window=10)
 print("Omission values:", omission_values)
+```
+
+### Static Method: calculate_standard_deviation_welford
+
+Calculates the standard deviation of a numeric sequence using Welford's method.
+
+#### Parameters:
+
+- `numeric_sequence (List[Union[int, float]]):` The sequence of numbers (integers or floats) for which the standard deviation is to be calculated.
+- `decay_factor (Union[int, float]):` The decay factor for weighting recent values more heavily. Defaults to 0.95.
+
+#### Returns:
+
+- `float:` The standard deviation of the sequence. Returns 0 if the sequence contains fewer than two elements.
+
+#### Description:
+
+This method is an online algorithm designed to compute the standard deviation of a sequence of numbers iteratively, which can be useful for large datasets where all data cannot be loaded into memory at once.
+
+#### Example Usage:
+
+```python
+# Update and return the omission values for each number in all_numbers
+number_combinations = [1, 2, 3, 4, 5, 6]
+sd = self.calculate_standard_deviation_welford(number_combinations)
 ```
 
 ### Abstract Method: calculate_winning_amount

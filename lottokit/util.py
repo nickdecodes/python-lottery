@@ -13,6 +13,7 @@
 import re
 import sys
 import csv
+import math
 import time
 import json
 import datetime
@@ -25,8 +26,14 @@ import numpy as np
 import pandas as pd
 from pmdarima import auto_arima
 from selenium import webdriver
+from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import RandomizedSearchCV
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -323,7 +330,7 @@ class IOUtil:
 
 class ModelUtil:
     @staticmethod
-    def moving_average(numeric_sequence: List[int]) -> int:
+    def exponential_moving_average_next_value(numeric_sequence: List[int], span: int = 5) -> int:
         """
         Calculate the Exponential Moving Average (EMA) of a given numeric sequence.
 
@@ -332,42 +339,53 @@ class ModelUtil:
         to a simple moving average (SMA).
 
         :param numeric_sequence: A list or sequence of numbers for which the EMA is to be calculated.
+        :param span: The number of periods over which to calculate the EMA. Default is 5.
         :return: The EMA value as an integer.
+        :raises ValueError: If the input list is empty or contains non-numeric values.
         """
+        if not numeric_sequence:
+            raise ValueError("The numeric sequence cannot be empty.")
+        if not all(isinstance(x, (int, float)) for x in numeric_sequence):
+            raise ValueError("All elements in the numeric sequence must be numbers.")
+
         # Convert the numeric sequence into a pandas Series object
         series = pd.Series(numeric_sequence)
 
         # Calculate the EMA using pandas' ewm method
-        # 'span' defines the period over which to calculate the EMA
-        # 'min_periods' sets the minimum number of observations in window required to have a value
-        # 'adjust=False' specifies that we are interested in the recursive calculation mode
-        ema = series.ewm(span=5, min_periods=len(numeric_sequence), adjust=False).mean()
+        # Adjust 'min_periods' to handle shorter sequences gracefully
+        ema = series.ewm(span=span, min_periods=min(span, len(numeric_sequence)), adjust=False).mean()
 
         # Return the last value of the EMA series as an integer
         return round(ema.iloc[-1])
 
     @staticmethod
-    def linear_regression(numeric_sequence: List[int]) -> int:
+    def linear_regression_next_value_by_index(numeric_sequence: List[int]) -> int:
         """
         Predicts the next value in a sequence using linear regression.
 
         Linear regression involves fitting a line to the data points in such a way
         that the distance between the data points and the line is minimized. This function
         uses the method to predict the next value in a given sequence of numbers by fitting
-        a model to the sequence and looking at the slope of the line.
+        a model to the sequence and examining the slope of the line.
 
         :param numeric_sequence: A list or sequence of numbers to model.
         :return: The predicted next value in the sequence as an integer.
+        :raises ValueError: If the input sequence is empty or too short for regression analysis.
         """
+        if not numeric_sequence:
+            raise ValueError("The numeric sequence cannot be empty.")
+        if len(numeric_sequence) < 2:
+            raise ValueError("The numeric sequence must contain at least two elements for linear regression.")
+
         # Convert the numeric sequence into a numpy array and reshape for sklearn
         data = np.array(numeric_sequence).reshape(-1, 1)
 
         # Create an array representing time or the independent variable, reshaped as a column
-        time = np.array(range(len(data))).reshape(-1, 1)
+        index = np.array(range(len(data))).reshape(-1, 1)
 
         # Create a LinearRegression model and fit it to the data
         model = LinearRegression()
-        model.fit(time, data)
+        model.fit(index, data)
 
         # Predict the next value in the sequence using the fitted model
         prediction = model.predict([[len(data)]])[0][0]
@@ -376,7 +394,59 @@ class ModelUtil:
         return round(prediction)
 
     @staticmethod
-    def harmonic_regression(numeric_sequence: List[int], frequency: float = 1.0) -> int:
+    def multivariate_polynomial_regression_next_value(
+            numeric_sequence: List[int],
+            rolling_size: int,
+            degrees: int = 3,
+    ) -> float:
+        """
+        Predicts the next value in a numeric sequence using multivariate polynomial regression.
+
+        This method applies a polynomial regression model to a numeric sequence to predict the next value.
+        It utilizes a rolling window approach to create datasets, scales the features, and fits a polynomial
+        regression model to make the prediction.
+
+        Args:
+            numeric_sequence (List[int]): The list of integers representing the sequence.
+            rolling_size (int): The number of elements in each rolling window.
+            degrees (int): The degree of the polynomial regression. Defaults to 3.
+
+        Returns:
+            float: The predicted next value in the sequence.
+
+        Raises:
+            ValueError: If the rolling_size is larger than the size of numeric_sequence.
+        """
+        if rolling_size > len(numeric_sequence):
+            raise ValueError("rolling_size cannot be larger than the size of numeric_sequence")
+
+        # Generate datasets with the specified rolling size
+        train_x, train_y = CalculateUtil.generate_datasets_with_rolling_size(
+            data=numeric_sequence, rolling_size=rolling_size
+        )
+
+        # Preparing input data for model training
+        input_x = np.array(train_x)
+        output_y = np.array(train_y)
+
+        # Scaling the features
+        scaler = StandardScaler()
+        input_x_scaled = scaler.fit_transform(input_x)
+
+        # Creating and training the polynomial regression model
+        model = make_pipeline(PolynomialFeatures(degrees), LinearRegression())
+        model.fit(input_x_scaled, output_y)
+
+        # Preparing the last rolling window of data for prediction
+        test_x = np.array([numeric_sequence[-rolling_size:]])
+        test_x_scaled = scaler.transform(test_x)
+
+        # Predicting the next value
+        pred_y = model.predict(test_x_scaled)
+        return pred_y[0]
+
+    @staticmethod
+    def harmonic_regression_next_value_by_index(numeric_sequence: List[int], frequency: float = 1.0) -> int:
         """
         Predicts the next value in a sequence using harmonic regression.
 
@@ -392,11 +462,11 @@ class ModelUtil:
         data = np.array(numeric_sequence).reshape(-1, 1)
 
         # Create an array representing time or the independent variable
-        time = np.array(range(len(data))).reshape(-1, 1)
+        index = np.array(range(len(data))).reshape(-1, 1)
 
         # Generate sine and cosine features based on the time array and given frequency
-        sine_feature = np.sin(2 * np.pi * frequency * time)
-        cosine_feature = np.cos(2 * np.pi * frequency * time)
+        sine_feature = np.sin(2 * np.pi * frequency * index)
+        cosine_feature = np.cos(2 * np.pi * frequency * index)
 
         # Combine sine and cosine features into a single feature matrix
         features = np.hstack((sine_feature, cosine_feature))
@@ -417,7 +487,135 @@ class ModelUtil:
         return round(prediction)
 
     @staticmethod
-    def random_forest_regressor(numeric_sequence: List[int]) -> int:
+    def random_forest_regressor_transformer(
+            numeric_sequence: List[int],
+            rolling_size: int,
+            warm_start: bool = False,
+            random_state: int = 12,
+            param_distributions: Optional[Dict] = None,
+            param_overrides: Optional[Dict] = None
+    ) -> float:
+        train_x, train_y = CalculateUtil.generate_datasets_with_rolling_size(
+            data=numeric_sequence, rolling_size=rolling_size
+        )
+
+        # Convert lists to numpy arrays for compatibility with scikit-learn
+        input_x = np.array(train_x)
+        output_y = np.array(train_y)
+
+        # Scale the features to normalize data
+        scaler = StandardScaler()
+        input_x_scaled = scaler.fit_transform(input_x)
+
+        # Initialize and train the Random Forest Regressor
+        model = RandomForestRegressor(warm_start=warm_start, random_state=random_state)
+        if param_distributions:
+            param_overrides = param_overrides or {}
+            random_search = RandomizedSearchCV(estimator=model, param_distributions=param_distributions,
+                                               **param_overrides)
+            random_search.fit(input_x_scaled, output_y)
+            model = RandomForestRegressor(warm_start=warm_start, random_state=random_state,
+                                          **random_search.best_params_)
+
+        model_pipline = Pipeline([
+            ('prediction_transformer', RandomForestRegressorTransformer(model)),
+            ('prediction_transformer_two', RandomForestRegressor(warm_start=warm_start, random_state=random_state)),
+            # ('poly_features', PolynomialFeatures(degree=2)),
+            # ('linear_regression', LinearRegression())
+        ])
+        model_pipline.fit(input_x_scaled, output_y)
+
+        # Prepare the last rolling window of data for prediction
+        test_x = np.array([numeric_sequence[-rolling_size:]])
+        test_x_scaled = scaler.transform(test_x)
+
+        # Predicting the next value
+        pred_y = model_pipline.predict(test_x_scaled)
+        return pred_y
+
+    @staticmethod
+    def random_forest_regressor_next_value(
+            numeric_sequence: List[int],
+            rolling_size: int,
+            warm_start: bool = False,
+            random_state: int = 12,
+            param_distributions: Optional[Dict] = None,
+            param_overrides: Optional[Dict] = None
+    ) -> float:
+        """
+        Predicts the next value in a numeric sequence using a Random Forest Regressor model.
+
+        This method uses a Random Forest Regressor to predict the next value in a sequence based on
+        the values in a rolling window. The sequence is first transformed into a dataset suitable for
+        regression by creating overlapping windows of specified size.
+
+        Args:
+            numeric_sequence (List[int]): The list of integers representing the sequence.
+            rolling_size (int): The number of elements in each rolling window.
+            warm_start (bool): Whether to reuse the solution of the previous call to fit and add more estimators to the ensemble.
+            random_state (int): Controls both the randomness of the bootstrapping of the samples used when building trees
+                                (if `bootstrap=True`) and the sampling of the features to consider when looking for the best split at each node.
+            param_distributions (Optional[Dict]): The distribution of parameters to try in randomized search.
+                                                eg: {
+                                                    'n_estimators': stats.randint(100, 500),
+                                                    'max_depth': [None, ] + [i for i in range(10, 100)],
+                                                    'max_features': ['sqrt', 'log2'],
+                                                    'min_samples_split': stats.randint(2, 80),
+                                                    'min_samples_leaf': stats.randint(1, 40)
+                                                }
+            param_overrides (Optional[Dict]): Additional parameters for the RandomizedSearchCV.
+                                                eg: {
+                                                    'n_iter': 100,
+                                                    'cv': 3,
+                                                    'scoring': 'neg_mean_squared_error',
+                                                    'verbose': 0,
+                                                    'random_state': 12,
+                                                    'n_jobs': -1
+                                                }
+
+        Returns:
+            float: The predicted next value in the sequence.
+
+        Raises:
+            ValueError: If the rolling_size is larger than the size of numeric_sequence.
+        """
+        if rolling_size > len(numeric_sequence):
+            raise ValueError("rolling_size cannot be larger than the size of numeric_sequence")
+
+        # Generate datasets with the specified rolling size
+        train_x, train_y = CalculateUtil.generate_datasets_with_rolling_size(
+            data=numeric_sequence, rolling_size=rolling_size
+        )
+
+        # Convert lists to numpy arrays for compatibility with scikit-learn
+        input_x = np.array(train_x)
+        output_y = np.array(train_y)
+
+        # Scale the features to normalize data
+        scaler = StandardScaler()
+        input_x_scaled = scaler.fit_transform(input_x)
+
+        # Initialize and train the Random Forest Regressor
+        model = RandomForestRegressor(warm_start=warm_start, random_state=random_state)
+        if param_distributions:
+            param_overrides = param_overrides or {}
+            random_search = RandomizedSearchCV(estimator=model, param_distributions=param_distributions,
+                                               **param_overrides)
+            random_search.fit(input_x_scaled, output_y)
+            model = RandomForestRegressor(warm_start=warm_start, random_state=random_state,
+                                          **random_search.best_params_)
+        model.fit(input_x_scaled, output_y)
+
+        # Prepare the last rolling window of data for prediction
+        test_x = np.array([numeric_sequence[-rolling_size:]])
+        test_x_scaled = scaler.transform(test_x)
+
+        # Predicting the next value
+        pred_y = model.predict(test_x_scaled)
+        return pred_y[0]
+
+    @staticmethod
+    def random_forest_regressor_next_value_by_index(numeric_sequence: List[int]) -> int:
         """
         Predicts the next value in a sequence using a Random Forest Regressor.
 
@@ -434,11 +632,11 @@ class ModelUtil:
         data = np.array(numeric_sequence).reshape(-1, 1)
 
         # Create an array representing time or the independent variable, reshaped as a column
-        time = np.array(range(len(data))).reshape(-1, 1)
+        time_feature = np.array(range(len(data))).reshape(-1, 1)
 
         # Create a RandomForestRegressor model and fit it to the data
         model = RandomForestRegressor()
-        model.fit(time, data.ravel())  # Flatten the array to fit the model
+        model.fit(time_feature, data.ravel())  # Flatten the array to fit the model
 
         # Predict the next value in the sequence using the fitted model
         future_time = np.array([len(data)]).reshape(-1, 1)
@@ -448,48 +646,38 @@ class ModelUtil:
         return round(future_pred[0])
 
     @staticmethod
-    def relative_strength_index(numeric_sequence: List[int], period: int = 10) -> int:
+    def relative_strength_index(numeric_sequence: List[int], period: int = 14) -> float:
         """
-        Calculate the Relative Strength Index (RSI) for a given list of prices.
-
-        The RSI is a momentum oscillator that measures the speed and change of price movements.
-        It oscillates between zero and 100. Traditionally, and according to Wilder, RSI is considered
-        overbought when above 70 and oversold when below 30.
+        Calculate the Relative Strength Index (RSI) using Exponential Moving Average (EMA).
 
         :param numeric_sequence: A list of prices for a particular stock or asset.
         :param period: The period over which to calculate the RSI, typically 14.
         :return: The calculated RSI value.
         """
-        # Ensure there are enough data points to calculate RSI
         if len(numeric_sequence) < period:
             raise ValueError("Not enough data points to calculate RSI")
 
-        # Calculate the differences between consecutive prices
         deltas = [numeric_sequence[i + 1] - numeric_sequence[i] for i in range(len(numeric_sequence) - 1)]
+        gains = [max(delta, 0) for delta in deltas]
+        losses = [max(-delta, 0) for delta in deltas]
 
-        # Separate the positive gains and negative losses from the deltas
-        gains = [delta if delta > 0 else 0 for delta in deltas]
-        losses = [-delta if delta < 0 else 0 for delta in deltas]
-
-        # Calculate the initial average gain and average loss
+        # Initialize EMA with SMA for the first 'period'
         avg_gain = sum(gains[:period]) / period
         avg_loss = sum(losses[:period]) / period
 
-        # The Exponential Moving Average (EMA) for gains and losses
+        # Apply EMA formula for gains and losses
+        ema_factor = 2 / (period + 1)
         for i in range(period, len(deltas)):
-            avg_gain = ((avg_gain * (period - 1)) + gains[i]) / period
-            avg_loss = ((avg_loss * (period - 1)) + losses[i]) / period
+            avg_gain = (gains[i] * ema_factor) + (avg_gain * (1 - ema_factor))
+            avg_loss = (losses[i] * ema_factor) + (avg_loss * (1 - ema_factor))
 
-        # Calculate the Relative Strength (RS)
         rs = avg_gain / avg_loss if avg_loss != 0 else 0
-
-        # Calculate the RSI
         rsi = 100 - (100 / (1 + rs)) if avg_loss != 0 else 100
 
         return rsi
 
     @staticmethod
-    def seasonal_autoregressive_integrated_moving_average(numeric_sequence: List[int]) -> int:
+    def seasonal_autoregressive_integrated_moving_average_next_value(numeric_sequence: List[int]) -> int:
         """
         Fit a Seasonal Autoregressive Integrated Moving Average (SARIMA) model to
         the provided time series data and predict the next value in the series.
@@ -628,6 +816,51 @@ class CalculateUtil(ABC):
     """
     Compute features based on a single or multi of data
     """
+
+    @staticmethod
+    def generate_datasets_with_rolling_size(data: List[int],
+                                            rolling_size: int = 5,
+                                            adjust: bool = False) -> Tuple[List[List[int]], List[int]]:
+        """
+        Generates sequential test and validation datasets from a list of integers. It optionally adjusts
+        test datasets by removing extreme values.
+
+        The function iterates over the data to create overlapping test sets of a specified size. Each test set is
+        followed by a validation set which is the next single element in the list. If the 'adjust' flag is True,
+        the maximum and minimum values are removed from each test set.
+
+        Args:
+            data (List[int]): The input data list from which datasets are generated.
+            rolling_size (int): The number of elements in each test set. Defaults to 5.
+            adjust (bool): Whether to remove the maximum and minimum values from each test set. Defaults to False.
+
+        Returns:
+            Tuple[List[List[int]], List[int]]: A tuple containing two lists:
+                - The first list contains the test sets, possibly adjusted.
+                - The second list contains the single-element validation sets.
+        """
+        x_sets = []  # List to hold the test sets
+        y_sets = []  # List to hold the validation sets
+
+        # Iterate over the data to form test and validation sets
+        for i in range(len(data) - rolling_size):
+            test_set = data[i:i + rolling_size]  # Extract size elements for the test set
+            validation_set = data[i + rolling_size]  # Take the next element as the validation set
+
+            if len(test_set) > 2 and adjust:
+                # Remove the maximum and minimum values if adjusting
+                max_val = max(test_set)
+                min_val = min(test_set)
+                max_index = test_set.index(max_val)
+                min_index = test_set.index(min_val)
+                filtered_test_set = [x for idx, x in enumerate(test_set) if idx != max_index and idx != min_index]
+                x_sets.append(filtered_test_set)
+            else:
+                x_sets.append(test_set)  # Append the test set as is if not adjusting
+
+            y_sets.append(validation_set)  # Append the validation element
+
+        return x_sets, y_sets
 
     @classmethod
     def calculate_zone_ratio(
@@ -798,7 +1031,7 @@ class CalculateUtil(ABC):
             if num < 1 or (num % 2 == 0 and num > 2):
                 return False
             # Check for factors from 3 to the square root of num
-            for i in range(3, int(num**0.5) + 1, 2):
+            for i in range(3, int(num ** 0.5) + 1, 2):
                 if num % i == 0:
                     return False
             return True
@@ -938,6 +1171,10 @@ class CalculateUtil(ABC):
         return len(distinct_diffs) - (num_count - 1)
 
     @classmethod
+    def calculate_avg(cls, number_combination: Iterable[int], **kwargs: Any) -> int:
+        return math.floor(sum(number_combination) / len(list(number_combination)))
+
+    @classmethod
     def calculate_consecutive_numbers(
             cls,
             number_combination: Iterable[int],
@@ -1054,7 +1291,8 @@ class CalculateUtil(ABC):
         number_combinations_list = list(number_combinations[-window:])
 
         # Determine the range for the last 5 periods
-        last_five_periods = number_combinations_list if len(number_combinations_list) >= window else number_combinations_list
+        last_five_periods = number_combinations_list if len(
+            number_combinations_list) >= window else number_combinations_list
 
         # Flatten the list of last five periods and convert to a set to remove duplicates
         numbers_in_last_five_periods: Set[int] = set(num for period in last_five_periods for num in period)
@@ -1094,7 +1332,8 @@ class CalculateUtil(ABC):
         number_combinations_list = list(number_combinations[-window:])
 
         # Determine the range for the last 5 periods
-        last_ten_periods = number_combinations_list if len(number_combinations_list) >= window else number_combinations_list
+        last_ten_periods = number_combinations_list if len(
+            number_combinations_list) >= window else number_combinations_list
 
         # The number of draws since the last appearance
         draws_since_last_appearance = 0
@@ -1116,6 +1355,85 @@ class CalculateUtil(ABC):
                 omission_values[number] = draws_since_last_appearance
 
         return omission_values
+
+    @staticmethod
+    def calculate_standard_deviation_welford(numeric_sequence: List[Union[int, float]],
+                                             decay_factor: Union[int, float] = 0.95) -> Union[int, float]:
+        """
+        Calculates the standard deviation of a numeric sequence using Welford's method.
+
+        This method is an online algorithm designed to compute the standard deviation of a sequence of numbers
+        iteratively, which can be useful for large datasets where all data cannot be loaded into memory at once.
+
+        Args:
+            numeric_sequence (List[Union[int, float]]): The sequence of numbers (integers or floats) for which the standard deviation is to be calculated.
+            decay_factor (Union[int, float]): The decay factor for weighting recent values more heavily. Defaults to 0.95.
+
+        Returns:
+            float: The standard deviation of the sequence. Returns 0 if the sequence contains fewer than two elements.
+
+        Notes:
+            This function uses an exponential decay to weight recent observations more heavily in the calculation
+            of the mean and variance, which makes it sensitive to recent changes in the sequence.
+        """
+
+        if len(numeric_sequence) == 0:
+            raise ValueError("The numeric sequence cannot be empty.")
+        n = 0
+        mean = 0.0
+        M2 = 0.0
+        weighted_n = 0.0  # Weighted sample count
+
+        for x in numeric_sequence:
+            n += 1
+            weight = decay_factor ** (len(numeric_sequence) - n)  # Compute weight, newer data has higher weight
+            delta = x - mean
+            weighted_n += weight
+            mean += (delta * weight) / weighted_n
+            delta2 = x - mean
+            M2 += delta * delta2 * weight
+
+        if weighted_n < 2:
+            return 0.0  # Not enough samples to compute standard deviation
+        variance = M2 / weighted_n  # Compute variance using weighted sample count
+        return math.sqrt(variance)
+
+    @staticmethod
+    def calculate_standard_deviation(numeric_sequence: List[Union[int, float]]) -> Union[int, float]:
+        """
+        Calculates the standard deviation of a numeric sequence.
+
+        This method computes the standard deviation by first calculating the mean of the numbers,
+        then the variance as the average of the squared differences from the mean, and finally
+        taking the square root of the variance.
+
+        Args:
+            numeric_sequence (List[Union[int, float]]): The sequence of numbers (integers or floats) for which the standard deviation is to be calculated.
+
+        Returns:
+            float: The standard deviation of the sequence.
+
+        Raises:
+            ValueError: If the numeric_sequence is empty, as standard deviation cannot be calculated.
+        Notes:
+            This function uses an exponential decay to weight recent observations more heavily in the calculation
+            of the mean and variance, which makes it sensitive to recent changes in the sequence.
+        """
+        if len(numeric_sequence) == 0:
+            raise ValueError("The numeric sequence cannot be empty.")
+
+        # Calculate the mean of the sequence
+        mean = sum(numeric_sequence) / len(numeric_sequence)
+
+        # Calculate the squared differences from the mean
+        squared_diffs = [(x - mean) ** 2 for x in numeric_sequence]
+
+        # Calculate the variance
+        variance = sum(squared_diffs) / len(numeric_sequence)
+
+        # Calculate and return the standard deviation
+        standard_deviation = math.sqrt(variance)
+        return standard_deviation
 
     @abstractmethod
     def calculate_winning_amount(
@@ -1428,7 +1746,8 @@ class GeneticsUtil:
                 for dc in [-1, 1]:  # Check both left and right diagonals
                     count = 0
                     r, c = rows, num_index
-                    while rows - dfs_row <= r <= rows + 1 and pre_index - dfs_col <= c <= min(num_index + dfs_col, cols - 1):
+                    while rows - dfs_row <= r <= rows + 1 and pre_index - dfs_col <= c <= min(num_index + dfs_col,
+                                                                                              cols - 1):
                         if new_matrix[r][c] == 1:
                             count += 1
                         if dfs_row == dfs_col:
@@ -1551,6 +1870,59 @@ class GeneticsUtil:
         # Find and return the best individual based on fitness
         best_individual = min([list(item) for item in self.population], key=self.fitness)
         return best_individual
+
+
+class RandomForestRegressorTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, model: RandomForestRegressor):
+        """
+        Initialize the transformer with a RandomForestRegressor model and a StandardScaler for feature scaling.
+
+        Parameters:
+        model (RandomForestRegressor): The RandomForestRegressor model to be used for predictions.
+        """
+        self.calculate_util = CalculateUtil
+        self.model_util = ModelUtil
+        self.model = model
+        self.scaler = StandardScaler()
+
+    def fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> 'RandomForestRegressorTransformer':
+        """
+        Fit the RandomForest model and the scaler on the training data.
+
+        Parameters:
+        X (np.ndarray): Training data features.
+        y (Optional[np.ndarray]): Training data labels.
+
+        Returns:
+        RandomForestRegressorTransformer: The instance of this transformer.
+        """
+        X_scaled = self.scaler.fit_transform(X)
+        self.model.fit(X_scaled, y)
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """
+        Transform the input data by scaling, making predictions, and calculating per-row statistics.
+
+        Parameters:
+        X (np.ndarray): Data to transform.
+
+        Returns:
+        np.ndarray: Transformed data including last elements, predictions, standard deviations, and RSI values.
+        """
+        X_scaled = self.scaler.transform(X)
+        predictions = self.model.predict(X_scaled)
+
+        # Calculate standard deviation and RSI for each row
+        sd_per_row = np.array([self.calculate_util.calculate_standard_deviation_welford(row) for row in X])
+        rsi_per_row = np.array([self.model_util.relative_strength_index(row, period=len(row) // 2) for row in X])
+
+        # Extract the last element from each row
+        last_elements = X[:, -1]
+
+        # Combine all the computed features into a single array
+        transformed_data = np.c_[last_elements, predictions, sd_per_row, rsi_per_row]
+        return transformed_data
 
 
 if __name__ == '__main__':

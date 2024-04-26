@@ -10,9 +10,10 @@
 @SoftWare:
 """
 
-
 import os
 import time
+import math
+from scipy.stats import randint
 from datetime import datetime, timedelta
 from itertools import combinations
 from collections import Counter, namedtuple
@@ -149,6 +150,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     A pure virtual method inherited from util.SpiderUtil
     """
+
     def spider_recent_data(self) -> List[List[str]]:
         """
         Fetch the recent data from the web page.
@@ -222,6 +224,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     A pure virtual method inherited from util.AnalyzeUtil
     """
+
     def analyze_same_period_numbers(self, data=None, **kwargs: Any) -> None:
         """
         Analyze same period number in the last period.
@@ -457,6 +460,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     A pure virtual method inherited from util.CalculateUtil
     """
+
     def calculate_winning_amount(self,
                                  winning_number_combination: Union[NamedTuple, List[int], None],
                                  purchase_number_combinations: Union[List[NamedTuple], List[List[int]], None],
@@ -499,6 +503,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     Static methods with no side effects
     """
+
     @staticmethod
     def get_chunks_with_next(data: List[Any],
                              chunk_size: int = 10) -> Generator[Tuple[List[Any], Optional[Any]], None, None]:
@@ -526,6 +531,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     """
     other instance method
     """
+
     def download_data(self, force: bool = False) -> None:
         """
         spider full data and save data to history record file
@@ -730,6 +736,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         """
         Prepares the features data structure for the prediction algorithm.
         """
+
         def _feature_reviser(predictions: Counter, delta_size: int, feature_key: str) -> Counter:
             """
             Filters predictions based on the feature key and delta size.
@@ -777,7 +784,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         :param region: Integer to select the compute region, 1: front, 2: back, 3: all.
         :return: A dictionary with computed feature results.
         """
-        def _calculate_parser(caller: Callable, data: List[int], param: Optional[List] = None,) -> List[int]:
+
+        def _calculate_parser(caller: Callable, data: List[int], param: Optional[List] = None, ) -> List[int]:
             return caller(data, param) if param is not None else compute_method(data)
 
         features = {}
@@ -858,9 +866,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
 
                 for predictor in [
-                    self.moving_average,
-                    self.linear_regression,
-                    self.random_forest_regressor
+                    self.exponential_moving_average_next_value,
+                    self.linear_regression_next_value_by_index,
+                    self.random_forest_regressor_next_value_by_index
                 ]:
                     # Initialize the nested sets for each feature and region if not already present
                     region_predictions = predictions.setdefault(feature, {}).setdefault(region, Counter())
@@ -925,9 +933,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # Apply the transposed matrix to each predictor and generate predictions
         predictions = [
             tuple(predictor(seq) for seq in matrix_flip) for predictor in [
-                self.moving_average,
-                self.linear_regression,
-                self.random_forest_regressor,
+                self.exponential_moving_average_next_value,
+                self.linear_regression_next_value_by_index,
+                self.random_forest_regressor_next_value_by_index,
             ]
         ]
 
@@ -937,12 +945,18 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             for d in predictions
         ]
 
-    def predict_by_last_period(self, next_period: int = None, show_details: bool = False) -> List[List[int]]:
+    def predict_by_last_period(
+            self,
+            next_period: int = None,
+            show_details: bool = False,
+            window_size: int = 15
+    ) -> List[List[int]]:
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_period: int eg: 24001
         :param show_details: boolean flag to output details about the prediction
+        :param window_size: int, default is 15
         """
         history_data = self.read_csv_data_from_file(self.history_record_path, app_log=self.app_log)
         if next_period is None:
@@ -951,21 +965,27 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             index = next((i for i, sublist in enumerate(history_data) if sublist[0] == str(next_period)), -1)
             history_data = history_data[:index] if index != -1 else history_data[:]
 
-        maybe_combinations = self.predict_by_last_window_data(history_data, window=15)
+        maybe_combinations = self.predict_by_last_window_data(history_data, window=window_size)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
         self.app_log.info(predict_data) if show_details is True else None
 
-        handle_result = self.handle_last_window_data(data=history_data, window=15)
+        handle_result = self.handle_last_window_data(data=history_data, window=window_size)
         self.app_log.info(handle_result) if show_details is True else None
 
         return predict_data
 
-    def predict_by_same_period(self, next_period: int = None, show_details: bool = False) -> List[List[int]]:
+    def predict_by_same_period(
+            self,
+            next_period: int = None,
+            show_details: bool = False,
+            window_size: int = 15
+    ) -> List[List[int]]:
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_period: int eg: 24001
         :param show_details: boolean flag to output details about the prediction
+        :param window_size: int, default is 15
         """
         period_data = self.read_json_data_from_file(self.period_record_path, app_log=self.app_log)
         if next_period is None:
@@ -975,25 +995,29 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             index = next((i for i, sublist in enumerate(period_data) if sublist[0] == str(next_period)), -1)
             period_data = period_data[:index] if index != -1 else period_data[:]
 
-        maybe_combinations = self.predict_by_last_window_data(period_data, window=15)
+        maybe_combinations = self.predict_by_last_window_data(period_data, window=window_size)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
         self.app_log.info(predict_data) if show_details is True else None
 
-        handle_result = self.handle_last_window_data(data=period_data, window=15)
+        handle_result = self.handle_last_window_data(data=period_data, window=window_size)
         self.app_log.info(handle_result) if show_details is True else None
 
         return predict_data
 
-    def predict_by_last_weekday(self,
-                                next_weekday: int = None,
-                                next_period: int = None,
-                                show_details: bool = False) -> List[List[int]]:
+    def predict_by_last_weekday(
+            self,
+            next_weekday: int = None,
+            next_period: int = None,
+            show_details: bool = False,
+            window_size: int = 15
+    ) -> List[List[int]]:
         """
         Predicts features by the last weekday window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_weekday: int eg: [1 | 3 | 6]
         :param next_period: int eg: 24001
         :param show_details: boolean flag to output details about the prediction
+        :param window_size: int, default is 15
         """
         weekday_data = self.read_json_data_from_file(self.weekday_record_path, app_log=self.app_log)
         if next_weekday is None:
@@ -1004,29 +1028,39 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 index = next((i for i, sublist in enumerate(weekday_data) if sublist[0] == str(next_period)), -1)
                 weekday_data = weekday_data[:index] if index != -1 else weekday_data[:]
 
-        maybe_combinations = self.predict_by_last_window_data(weekday_data, window=15)
+        maybe_combinations = self.predict_by_last_window_data(weekday_data, window=window_size)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
         self.app_log.info(predict_data) if show_details is True else None
 
-        handle_result = self.handle_last_window_data(data=weekday_data, window=15)
+        handle_result = self.handle_last_window_data(data=weekday_data, window=window_size)
         self.app_log.info(handle_result) if show_details is True else None
 
         return predict_data
 
-    def predict(self, next_period: int = None, next_weekday: int = None, show_details: bool = False) -> List[List[int]]:
+    def predict(
+            self,
+            next_period: int = None,
+            next_weekday: int = None,
+            show_details: bool = False,
+            window_size: int = 15
+    ) -> List[List[int]]:
         """
         :param next_period: int eg: 24001
         :param next_weekday: int eg: [1 | 3 | 6]
         :param show_details: boolean flag to output details about the prediction
+        :param window_size: int, the default is 15
         """
         predict_data = []
         predict_data.extend(self.predict_by_last_period(next_period=next_period,
-                                                        show_details=show_details))
+                                                        show_details=show_details,
+                                                        window_size=window_size))
         predict_data.extend(self.predict_by_same_period(next_period=next_period,
-                                                        show_details=show_details))
+                                                        show_details=show_details,
+                                                        window_size=window_size))
         predict_data.extend(self.predict_by_last_weekday(next_weekday=next_weekday,
                                                          next_period=next_period,
-                                                         show_details=show_details))
+                                                         show_details=show_details,
+                                                         window_size=window_size))
 
         if show_details is True:
             self.app_log.info("The following is a preliminary forecast of the data analysis : ")
@@ -1043,18 +1077,174 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             sorted_back_zone_frequency = sorted(back_zone_frequency.items(), key=lambda x: x[1], reverse=True)
 
             # Printing the results
-            print("Counts of the front zone numbers in each row sorted by frequency:")
+            self.app_log.info("Counts of the front zone numbers in each row sorted by frequency:")
             for number, count in sorted_front_zone_frequency:
-                print(f"Number {number}: {count} times")
+                self.app_log.info(f"Number {number}: {count} times")
+            self.app_log.info(f"Total count of the front zone numbers in each row: {len(sorted_front_zone_frequency)}")
 
-            print("\nCounts of the back zone numbers in each row sorted by frequency:")
+            self.app_log.info("\nCounts of the back zone numbers in each row sorted by frequency:")
             for number, count in sorted_back_zone_frequency:
-                print(f"Number {number}: {count} times")
+                self.app_log.info(f"Number {number}: {count} times")
+            self.app_log.info(f"Total count of the back zone numbers in each row: {len(sorted_back_zone_frequency)}")
 
             self.app_log.info("\nHere are the preliminary predictions: ")
             for data in predict_data:
-                self.app_log.info(','.join(map(str, data)))
+                self.app_log.info(', '.join(map(str, data)))
         return predict_data
+
+    def calculate_predictions_and_intervals(
+            self,
+            data: List[Union[float, int]],
+            sd_threshold: float,
+            rolling_size: int,
+            warm_start: bool = False,
+            random_state: int = 12,
+            param_distributions: Optional[Dict] = None,
+            param_overrides: Optional[Dict] = None
+    ) -> Tuple[Union[float, int], int, int]:
+        """
+        Calculate prediction intervals based on historical data and a specified rolling size.
+
+        Args:
+            data (List[float]): The list of historical data points.
+            sd_threshold (float): The threshold for standard deviation calculations.
+            rolling_size (int): The number of recent data points to consider for rolling calculations.
+            warm_start (bool, optional): Whether to use the previous model state for training. Defaults to False.
+            random_state (int, optional): A seed used by the random number generator for reproducibility. Defaults to 12.
+            param_distributions (Optional[Dict]): The distribution of parameters to try in randomized search.
+            param_overrides (Optional[Dict]): Additional parameters for the RandomizedSearchCV.
+
+        Returns:
+            Tuple[float, int, int]: A tuple containing the predicted value, and the minimum and maximum values of the prediction interval.
+        """
+        # Calculate standard deviation and tendency using a Welford's method based implementation
+        sd = self.calculate_standard_deviation_welford(data[-rolling_size:])
+        tendency = 0
+        rsi = self.relative_strength_index(data[-rolling_size:], period=rolling_size // 2)
+        if data[-1] >= math.floor(0.75 * sd_threshold) or rsi > 69:
+            tendency = -1
+        elif data[-1] <= math.ceil(0.12 * sd_threshold) or rsi < 31:
+            tendency = 1
+        param_overrides = param_overrides or {
+            'n_iter': 100,
+            'cv': 3,
+            'scoring': 'neg_mean_squared_error',
+            'verbose': 0,
+            'random_state': 12,
+            'n_jobs': -1
+        }
+        # Predict the next value using a random forest regressor
+        pred = self.random_forest_regressor_next_value(data, rolling_size=rolling_size,
+                                                       warm_start=warm_start,
+                                                       random_state=random_state,
+                                                       param_distributions=param_distributions,
+                                                       param_overrides=param_overrides)
+
+        # Set default interval values based on zero tendency
+        min_val = math.floor(pred - sd)
+        max_val = math.ceil(pred + sd)
+
+        # Adjust interval based on the tendency
+        if tendency < 0:
+            max_val = math.ceil(pred + sd)
+        elif tendency > 0:
+            min_val = math.floor(pred - sd)
+
+        return pred, min_val, max_val
+
+    def analyze_predict(
+            self,
+            next_period: int = None,
+            next_weekday: int = None,
+            show_details: bool = False,
+            window_size: int = 15
+    ) -> List[List[int]]:
+        def filter_combs(combs, criteria, intersection_set, required_intersection_count):
+            filtered_combs = []
+            for comb in combs:
+                sum_val = self.calculate_sum_total(comb)
+                span_val = self.calculate_span(comb)
+                avg_val = self.calculate_avg(comb)
+
+                if all([
+                    criteria['sum_total']['min'] <= sum_val <= criteria['sum_total']['max'],
+                    criteria['span']['min'] <= span_val <= criteria['span']['max'],
+                    criteria['avg']['min'] <= avg_val <= criteria['avg']['max'],
+                    # len(intersection_set.intersection(set(comb))) >= required_intersection_count,
+                ]):
+                    filtered_combs.append(comb)
+            return filtered_combs
+
+        predict_data = self.predict(next_period=next_period, next_weekday=next_weekday,
+                                    show_details=show_details, window_size=window_size)
+        front_set, back_set = set(), set()
+        for data in predict_data:
+            front_set.update(self.calculate_front(data))
+            back_set.update(self.calculate_back(data))
+
+        self.app_log.info("Now, Will analyze the predictions..., Then adjust data")
+        history_data = self.read_csv_data_from_file(self.history_record_path, app_log=self.app_log)
+        if next_period is not None:
+            index = next((i for i, sublist in enumerate(history_data) if sublist[0] == str(next_period)), -1)
+            history_data = history_data[:index] if index != -1 else history_data[:]
+
+        features = ['sum_total', 'span', 'avg']
+        history_data_features = {zone: {feat: [] for feat in features} for zone in ['front', 'back']}
+        # Use results as needed
+        for data in history_data:
+            for zone in ['front', 'back']:
+                zone_data = self.calculate_front(data) if zone == 'front' else self.calculate_back(data)
+                for feature in features:
+                    func = getattr(self, f'calculate_{feature}')
+                    history_data_features[zone][feature].append(func(zone_data))
+
+        params = {
+            'front': {
+                'sum_total': {'sd_threshold': sum([31, 32, 33, 34, 35]), 'rolling_size': 5, 'warm_start': True,
+                              'random_state': 12},
+                'span': {'sd_threshold': abs(35 - 1), 'rolling_size': 5, 'warm_start': True, 'random_state': 12},
+                'avg': {'sd_threshold': sum([31, 32, 33, 34, 35]) // 5, 'rolling_size': 5, 'warm_start': True,
+                        'random_state': 12}
+            },
+            'back': {
+                'sum_total': {'sd_threshold': sum([11, 12]), 'rolling_size': 5, 'warm_start': True, 'random_state': 12},
+                'span': {'sd_threshold': abs(12 - 1), 'rolling_size': 5, 'warm_start': True, 'random_state': 12},
+                'avg': {'sd_threshold': sum([11, 12]) // 2, 'rolling_size': 5, 'warm_start': True, 'random_state': 12}
+            }
+        }
+        results = {'front': {}, 'back': {}}
+
+        for zone in ['front', 'back']:
+            for feature in features:
+                pred, min_val, max_val = self.calculate_predictions_and_intervals(
+                    history_data_features[zone][feature],
+                    params[zone][feature]['sd_threshold'],
+                    params[zone][feature]['rolling_size'],
+                    params[zone][feature]['warm_start'],
+                    params[zone][feature]['random_state'],
+                    param_distributions={
+                        'n_estimators': randint(100, 500),
+                        'max_depth': [None, ] + [i for i in range(10, 100)],
+                        'max_features': ['sqrt', 'log2'],
+                        'min_samples_split': randint(2, 80),
+                        'min_samples_leaf': randint(1, 40)
+                    }
+                )
+                results[zone][feature] = {'prediction': pred, 'min': min_val, 'max': max_val}
+                self.app_log.info(f'zone:{zone} {feature}: {pred}, min: {min_val}, max: {max_val}')
+
+        # Filter front and back combinations
+        # filter_front_comb = filter_combs(self.all_fronts, results['front'], front_set, 4)
+        filter_front_comb = filter_combs(list(combinations(front_set, self.front_size)), results['front'], front_set, 4)
+        # filter_back_comb = filter_combs(self.all_backs, results['back'], back_set, 1)
+        filter_back_comb = filter_combs(list(combinations(back_set, self.back_size)), results['back'], back_set, 1)
+        self.app_log.info(f'Front filter result count: {len(filter_front_comb)}')
+        self.app_log.info(f'Back filter result count: {len(filter_back_comb)}')
+
+        # Combine front and back combinations
+        final_combinations = [front + back for front in filter_front_comb for back in filter_back_comb]
+        self.app_log.info(f'Final result count: {len(final_combinations)}')
+        return final_combinations
 
     def test(self):
         pass
