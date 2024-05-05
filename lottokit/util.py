@@ -330,9 +330,13 @@ class IOUtil:
 
 class ModelUtil:
     @staticmethod
-    def exponential_moving_average_next_value(numeric_sequence: List[int], span: int = 5) -> int:
+    def exponential_moving_average_next_value(
+            numeric_sequence: List[int],
+            span: int = 5,
+            enable_rolling_difference: bool = False
+    ) -> int:
         """
-        Calculate the Exponential Moving Average (EMA) of a given numeric sequence.
+        Calculate the Exponential Moving Average (EMA) and use rolling difference to predict the next value of a sequence.
 
         EMA is a type of moving average that places a greater weight and significance
         on the most recent data points. It's more responsive to new information compared
@@ -340,7 +344,8 @@ class ModelUtil:
 
         :param numeric_sequence: A list or sequence of numbers for which the EMA is to be calculated.
         :param span: The number of periods over which to calculate the EMA. Default is 5.
-        :return: The EMA value as an integer.
+        :param enable_rolling_difference: weather to enable rolling. default is False
+        :return: Predicted next value of the sequence based on EMA and rolling difference.
         :raises ValueError: If the input list is empty or contains non-numeric values.
         """
         if not numeric_sequence:
@@ -355,8 +360,18 @@ class ModelUtil:
         # Adjust 'min_periods' to handle shorter sequences gracefully
         ema = series.ewm(span=span, min_periods=min(span, len(numeric_sequence)), adjust=False).mean()
 
-        # Return the last value of the EMA series as an integer
-        return round(ema.iloc[-1])
+        # Calculate rolling difference
+        rolling_difference = series.diff()
+
+        # Predict the next value by extrapolating the last rolling difference and the last EMA value
+        if len(rolling_difference) > 1 and enable_rolling_difference is True:
+            predicted_next_value = ema.iloc[-1] + rolling_difference.iloc[-1]
+        else:
+            # If there's no enough data to calculate difference, use the last EMA as the prediction
+            predicted_next_value = ema.iloc[-1]
+
+        # Return the predicted next value rounded to the nearest integer
+        return round(predicted_next_value)
 
     @staticmethod
     def linear_regression_next_value_by_index(numeric_sequence: List[int]) -> int:

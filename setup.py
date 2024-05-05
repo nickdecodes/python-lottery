@@ -17,7 +17,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name='lottokit',
-    version='1.0',
+    version='1.1',
     keywords=['lottokit', 'lottery'],
     packages=find_packages(),
     package_data={"": ["LICENSE", "NOTICE"]},
