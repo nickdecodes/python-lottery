@@ -676,6 +676,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         """
         front_sequences = [self.calculate_front(d) for d in data]
         back_sequences = [self.calculate_back(d) for d in data]
+
         next_weekday = next_weekday or self.get_next_weekday()
         next_period = next_period or self.get_next_period()
 
@@ -688,8 +689,38 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         return front_kill_numbers, back_kill_numbers
 
+    @staticmethod
+    def get_same_number_index(pre_data, cur_data):
+        same_number_index = []
+        for ind, num in enumerate(pre_data):
+            if num in cur_data:
+                same_number_index.append(ind + 1)
+        return same_number_index
+
+    @staticmethod
+    def get_edge_number_index(pre_data, cur_data):
+        edge_info = []
+        for ind, num in enumerate(pre_data):
+            edge_nums = set(num + i for i in [-1, 1])
+            plead_edge = set(cur_data).intersection(edge_nums)
+            if len(plead_edge) > 0:
+                edge_info.append(ind + 1)
+        return edge_info
+
     def calculate_front_kills(self, sequences: List[List[int]], next_period: int, next_weekday: int) -> Set[int]:
         """Helper function to calculate front kill numbers based on the last sequence."""
+
+        def train_predict(chunk, func_name, chunk_size=1):
+            train_data = [result
+                          for c, n in self.get_chunks_with_next(chunk, chunk_size)
+                          for result in func_name(c[-1], n)]
+            return (
+                {self.exponential_moving_average_next_value(train_data),
+                 self.linear_regression_next_value_by_index(train_data),
+                 self.harmonic_regression_next_value_by_index(train_data)}
+                if len(train_data) > 2 else {}
+            )
+
         last_sequence = sequences[-1]
         a1, a2, a3, a4, a5 = last_sequence
         fb = abs(a5 - a3 - a1)
@@ -702,10 +733,44 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         kills.update({fc, (fc + next_period) % self.front_vocab_size, abs(fc - next_period) % self.front_vocab_size})
         kills.update({average, sum([a1, a2, a3]) // 3})
         kills.update({(a1 + a2) - (a3 + a4) - a5, a1 + a2 + a3 + a4 - a5})
+
+        # odd_even_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_odd_even_ratio(sequences[-1]))]
+        zone_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_zone_ratio(sequences[-1],
+                                                                                    self.front_zone_ranges))]
+        span = self.calculate_span(sequences[-1])
+        edge_index = train_predict(sequences, self.get_edge_number_index)
+        same_index = train_predict(sequences, self.get_edge_number_index)
+        kills.update({
+            abs(sequences[-1][zone_ratio[0]] - sequences[-1][zone_ratio[-1]]),
+            (sequences[-1][zone_ratio[0]] + sequences[-1][zone_ratio[-1]]) % 35,
+            abs(sequences[-1][-zone_ratio[0]] - sequences[-1][-zone_ratio[-1]]),
+            (sequences[-1][-zone_ratio[0]] + sequences[-1][-zone_ratio[-1]]) % 35,
+            abs(sequences[-1][0] - span),
+            (sequences[-1][-1] + span) % 35,
+            span
+        })
+        if edge_index:
+            kills.update(sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(5) for i in [-1, 1])
+
+        if same_index:
+            kills.update(sequences[-1][same - 1] for same in same_index if same - 1 in range(5))
+
         return kills
 
     def calculate_back_kills(self, sequences: List[List[int]], next_weekday: int) -> Set[int]:
         """Helper function to calculate back kill numbers based on the last sequence."""
+
+        def train_predict(chunk, func_name, chunk_size=1):
+            train_data = [result
+                          for c, n in self.get_chunks_with_next(chunk, chunk_size)
+                          for result in func_name(c[-1], n)]
+            return (
+                {self.exponential_moving_average_next_value(train_data),
+                 self.linear_regression_next_value_by_index(train_data),
+                 self.harmonic_regression_next_value_by_index(train_data)}
+                if len(train_data) > 2 else {}
+            )
+
         last_sequence = sequences[-1]
         b1, b2 = last_sequence
         bb = abs(b1 - b2)
@@ -714,6 +779,27 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         if bb == 0:
             kills.update({b1, b2})
         kills.update({sum(last_sequence) // self.back_size})
+
+        # odd_even_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_odd_even_ratio(sequences[-1]))]
+        zone_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_zone_ratio(sequences[-1],
+                                                                                    self.back_zone_ranges))]
+        span = self.calculate_span(sequences[-1])
+        edge_index = train_predict(sequences, self.get_edge_number_index)
+        same_index = train_predict(sequences, self.get_edge_number_index)
+        kills.update({
+            abs(sequences[-1][zone_ratio[0]] - sequences[-1][zone_ratio[-1]]),
+            (sequences[-1][zone_ratio[0]] + sequences[-1][zone_ratio[-1]]) % 35,
+            abs(sequences[-1][-zone_ratio[0]] - sequences[-1][-zone_ratio[-1]]),
+            (sequences[-1][-zone_ratio[0]] + sequences[-1][-zone_ratio[-1]]) % 35,
+            abs(sequences[-1][0] - span),
+            (sequences[-1][-1] + span) % 35,
+            span
+        })
+        if edge_index:
+            kills.update(sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(5) for i in [-1, 1])
+
+        if same_index:
+            kills.update(sequences[-1][same - 1] for same in same_index if same - 1 in range(5))
         return kills
 
     def get_banker_numbers(self, data: List[Any], next_period: int = None, next_weekday: int = None) -> Tuple[
@@ -1291,8 +1377,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         for data in predict_data:
             predict_front_set.update(self.calculate_front(data))
             predict_back_set.update(self.calculate_back(data))
-        exclude_front_set = predict_front_set.difference(set(range(1, self.front_vocab_size + 1)))
-        exclude_back_set = predict_back_set.difference(set(range(1, self.back_vocab_size + 1)))
+        exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(predict_front_set)
+        exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(predict_back_set)
 
         # generate kill and banker numbers
         history_data = self.get_previous_history_data(next_period=next_period)
@@ -1314,21 +1400,30 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         available_back_numbers = list(available_back_numbers)
 
         predictions = []
-
+        random.seed(self.calculate_sum_total(self.calculate_front(history_data[-1])))
         # Generate a prediction if there are enough numbers to sample from
         if len(available_front_numbers) >= 5 and len(available_back_numbers) >= 2:
-            predictions.append(
-                sorted(random.sample(available_front_numbers, 5)) + sorted(random.sample(available_back_numbers, 2)))
+            fd = sorted(available_front_numbers) if len(available_front_numbers) == 5 else sorted(
+                random.sample(list(available_front_numbers), 5))
+            bd = sorted(available_back_numbers) if len(available_back_numbers) == 2 else sorted(
+                random.sample(list(available_back_numbers), 2))
+            predictions.append(fd + bd)
 
         # Generate prediction from kill numbers if there are enough
         if len(front_kill_numbers) >= 5 and len(available_back_numbers) >= 2:
-            predictions.append(
-                sorted(random.sample(front_kill_numbers, 5)) + sorted(random.sample(available_back_numbers, 2)))
+            fd = sorted(front_kill_numbers) if len(front_kill_numbers) == 5 else sorted(
+                random.sample(list(front_kill_numbers), 5))
+            bd = sorted(available_back_numbers) if len(available_back_numbers) == 2 else sorted(
+                random.sample(list(available_back_numbers), 2))
+            predictions.append(fd + bd)
 
         # Generate prediction from banker numbers if there are enough
         if len(front_banker_numbers) >= 5 and len(available_back_numbers) >= 2:
-            predictions.append(
-                sorted(random.sample(front_banker_numbers, 5)) + sorted(random.sample(available_back_numbers, 2)))
+            fd = sorted(front_banker_numbers) if len(front_banker_numbers) == 5 else sorted(
+                random.sample(list(front_banker_numbers), 5))
+            bd = sorted(available_back_numbers) if len(available_back_numbers) == 2 else sorted(
+                random.sample(list(available_back_numbers), 2))
+            predictions.append(fd + bd)
 
         # Combine front and back combinations
         if show_details is True:
