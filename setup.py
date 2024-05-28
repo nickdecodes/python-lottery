@@ -37,7 +37,7 @@ setup(
         'Pillow>=9.5.0',
         'scikit-learn>=1.3.2',
         'pmdarima>=2.0.4',
-        'pywavelets>=1.6.0'
+        'pywavelets>=1.6.0',
         'requests',
         'twine'
     ],
