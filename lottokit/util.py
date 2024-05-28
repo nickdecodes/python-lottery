@@ -16,6 +16,7 @@ import csv
 import math
 import time
 import json
+import pywt
 import datetime
 import logging
 import logging.handlers
@@ -77,6 +78,22 @@ class IOUtil:
 
         # Return the configured logger
         return logger
+
+    @classmethod
+    def detail_log(cls: Any, app_log: Any, show_details: Optional[str] = None, **kwargs: Any) -> None:
+        if show_details is not None:
+            detail_message = kwargs.get(show_details, '')
+            app_log.info(detail_message)
+
+    @classmethod
+    def print_matrix(cls: Any, appeared_sequences: List[List[int]], matrix_size: int) -> None:
+        for sequence in appeared_sequences:
+            for i in range(1, matrix_size + 1):
+                if i in sequence:
+                    print(f"{i:>4}", end=" ")
+                else:
+                    print(f"{'-':>4}", end=" ")
+            print()
 
     @classmethod
     def list_to_int(
@@ -161,7 +178,7 @@ class IOUtil:
 
         try:
             with open(file_path, mode) as fp:
-                app_log.info(f'Writing to file: {fp.name}')
+                app_log.debug(f'Writing to file: {fp.name}')
                 for line in data:
                     if line is not None:
                         fp.write(f'{line}\n')
@@ -192,7 +209,7 @@ class IOUtil:
         data = []
         try:
             with open(file_path, mode) as fp:
-                app_log.info(f'Opening file: {fp.name}')
+                app_log.debug(f'Opening file: {fp.name}')
                 data = [line.strip() for line in fp if line.strip()]
         except Exception as ex:
             app_log.exception(f"An error occurred while reading the file: {ex}")
@@ -230,7 +247,7 @@ class IOUtil:
 
         try:
             with open(file_path, mode=mode, newline=newline) as fp:
-                app_log.info(f'Writing to CSV file: {fp.name}')
+                app_log.debug(f'Writing to CSV file: {fp.name}')
                 writer = csv.writer(fp, **kwargs)
                 writer.writerows(data)
         except Exception as ex:
@@ -260,7 +277,7 @@ class IOUtil:
 
         try:
             with open(file_path, mode=mode, **kwargs) as fp:
-                app_log.info(f'Reading CSV file: {fp.name}')
+                app_log.debug(f'Reading CSV file: {fp.name}')
                 reader = csv.reader(fp, **kwargs)
                 data = [row for row in reader]
         except Exception as ex:
@@ -290,7 +307,7 @@ class IOUtil:
         if app_log is None:
             app_log = cls.get_logger()
 
-        app_log.info(f'Writing to JSON file: {file_path}')
+        app_log.debug(f'Writing to JSON file: {file_path}')
         try:
             with open(file_path, mode, encoding='utf-8') as fp:
                 json.dump(data, fp, ensure_ascii=False, indent=4, **kwargs)
@@ -321,7 +338,7 @@ class IOUtil:
 
         try:
             with open(file_path, mode, encoding='utf-8', **kwargs) as fp:
-                app_log.info(f'Reading from JSON file: {file_path}')
+                app_log.debug(f'Reading from JSON file: {file_path}')
                 return json.load(fp)
         except Exception as ex:
             app_log.exception(f"An error occurred while reading the JSON file: {ex}")
@@ -371,7 +388,7 @@ class ModelUtil:
             predicted_next_value = ema.iloc[-1]
 
         # Return the predicted next value rounded to the nearest integer
-        return round(predicted_next_value)
+        return CalculateUtil.real_round(predicted_next_value)
 
     @staticmethod
     def linear_regression_next_value_by_index(numeric_sequence: List[int]) -> int:
@@ -406,12 +423,12 @@ class ModelUtil:
         prediction = model.predict([[len(data)]])[0][0]
 
         # Return the predicted value as an integer
-        return round(prediction)
+        return CalculateUtil.real_round(prediction)
 
     @staticmethod
     def multivariate_polynomial_regression_next_value(
             numeric_sequence: List[int],
-            rolling_size: int,
+            rolling_size: int = 3,
             degrees: int = 3,
     ) -> float:
         """
@@ -499,7 +516,7 @@ class ModelUtil:
         prediction = model.predict(next_features)[0][0]
 
         # Return the predicted value as an integer
-        return round(prediction)
+        return CalculateUtil.real_round(prediction)
 
     @staticmethod
     def random_forest_regressor_transformer(
@@ -658,7 +675,7 @@ class ModelUtil:
         future_pred = model.predict(future_time)
 
         # Return the predicted value as an integer
-        return round(future_pred[0])
+        return CalculateUtil.real_round(future_pred[0])
 
     @staticmethod
     def relative_strength_index(numeric_sequence: List[int], period: int = 14) -> float:
@@ -724,7 +741,7 @@ class ModelUtil:
         forecast = model.predict(n_periods=1)
 
         # Return the predicted value as an integer
-        return round(forecast[0])
+        return CalculateUtil.real_round(forecast[0])
 
 
 class SpiderUtil(ABC):
@@ -831,6 +848,108 @@ class CalculateUtil(ABC):
     """
     Compute features based on a single or multi of data
     """
+    @staticmethod
+    def real_round(n):
+        """
+        Custom rounding function.
+
+        Parameters:
+        n (float): The number to round.
+
+        Returns:
+        int: The rounded result.
+        """
+        return math.floor(n + 0.5)
+
+    @staticmethod
+    def invert_round(n):
+        """
+        Custom rounding function where:
+        - Values with decimal part less than 0.5 are rounded up.
+        - Values with decimal part exactly 0.5 are rounded down.
+
+        Parameters:
+        n (float): The number to round.
+
+        Returns:
+        int: The rounded result.
+        """
+        if n % 1 >= 0.5:
+            return math.floor(n)
+        else:
+            return math.ceil(n)
+
+    @staticmethod
+    def longest_increasing_subsequence(numeric_sequence: List[int]) -> List[int]:
+        """
+        Finds the longest increasing subsequence in a given numeric sequence.
+
+        Args:
+        numeric_sequence (List[int]): The input list of integers.
+
+        Returns:
+        List[int]: The longest increasing subsequence.
+        """
+        n = len(numeric_sequence)
+        dp = [1] * n
+
+        # Fill dp array with lengths of LIS ending at each index
+        for i in range(1, n):
+            for j in range(0, i):
+                if numeric_sequence[i] > numeric_sequence[j]:
+                    dp[i] = max(dp[i], dp[j] + 1)
+
+        lis_length = max(dp)
+        lis = []
+
+        # Find the index of the maximum value in dp array
+        max_index = dp.index(lis_length)
+        lis.append(numeric_sequence[max_index])
+        current_length = lis_length - 1
+
+        # Trace back the sequence to find the LIS
+        for i in range(max_index - 1, -1, -1):
+            if dp[i] == current_length and numeric_sequence[i] < lis[-1]:
+                lis.append(numeric_sequence[i])
+                current_length -= 1
+
+        return list(reversed(lis))
+
+    @staticmethod
+    def longest_decreasing_subsequence(numeric_sequence: List[int]) -> List[int]:
+        """
+        Finds the longest decreasing subsequence in a given numeric sequence.
+
+        Args:
+        numeric_sequence (List[int]): The input list of integers.
+
+        Returns:
+        List[int]: The longest decreasing subsequence.
+        """
+        n = len(numeric_sequence)
+        dp = [1] * n
+
+        # Fill dp array with lengths of LDS ending at each index
+        for i in range(1, n):
+            for j in range(0, i):
+                if numeric_sequence[i] < numeric_sequence[j]:
+                    dp[i] = max(dp[i], dp[j] + 1)
+
+        lds_length = max(dp)
+        lds = []
+
+        # Find the index of the maximum value in dp array
+        max_index = dp.index(lds_length)
+        lds.append(numeric_sequence[max_index])
+        current_length = lds_length - 1
+
+        # Trace back the sequence to find the LDS
+        for i in range(max_index - 1, -1, -1):
+            if dp[i] == current_length and numeric_sequence[i] > lds[-1]:
+                lds.append(numeric_sequence[i])
+                current_length -= 1
+
+        return list(reversed(lds))
 
     @staticmethod
     def generate_datasets_with_rolling_size(data: List[int],
@@ -876,6 +995,74 @@ class CalculateUtil(ABC):
             y_sets.append(validation_set)  # Append the validation element
 
         return x_sets, y_sets
+
+    @staticmethod
+    def calculate_euclidean_distance(
+        point1: Iterable[Optional[Union[int, float]]],
+        point2: Iterable[Optional[Union[int, float]]]
+    ) -> int:
+        """
+        Calculate the Euclidean distance between two points in n-dimensional space.
+
+        The Euclidean distance is the straight-line distance between two points in Euclidean space.
+
+        Args:
+            point1 (Iterable[Optional[Union[int, float]]]): The first point as an iterable of coordinates.
+            point2 (Iterable[Optional[Union[int, float]]]): The second point as an iterable of coordinates.
+
+        Returns:
+            int: The Euclidean distance between point1 and point2.
+
+        Raises:
+            ValueError: If point1 and point2 do not have the same dimensions.
+        """
+        if len(point1) != len(point2):
+            raise ValueError("Both points must have the same number of dimensions.")
+
+        p1 = [float(p) if p is not None else 0.0 for p in point1]
+        p2 = [float(p) if p is not None else 0.0 for p in point2]
+
+        euclidean_distance = math.sqrt(sum((x1 - x2) ** 2 for x1, x2 in zip(p1, p2)))
+        return CalculateUtil.real_round(euclidean_distance)
+
+    @staticmethod
+    def calculate_same_number_index(target_data: List[int], input_data: List[int]) -> List[int]:
+        """
+        Finds the indices in 'target_data' where the numbers are present in 'input_data'.
+
+        Args:
+        target_data (List[int]): The list of target integers.
+        input_data (List[int]): The list of input integers to be matched against.
+
+        Returns:
+        List[int]: A list of indices (1-based) in 'target_data' where numbers are found in 'input_data'.
+        """
+        same_number_index = []
+        for ind, num in enumerate(target_data):
+            if num in input_data:
+                same_number_index.append(ind)
+        return same_number_index
+
+    @staticmethod
+    def calculate_edge_number_index(target_data: List[int], input_data: List[int]) -> List[int]:
+        """
+        Finds the indices in 'target_data' where the numbers are adjacent to any number in 'input_data'.
+        A number is considered adjacent if it's either one smaller or one larger.
+
+        Args:
+        target_data (List[int]): The list of target integers.
+        input_data (List[int]): The list of input integers to check for adjacency.
+
+        Returns:
+        List[int]: A list of indices (1-based) in 'target_data' where numbers are adjacent to any in 'input_data'.
+        """
+        edge_info = []
+        for ind, num in enumerate(target_data):
+            edge_nums = set(num + i for i in [-1, 1])
+            plead_edge = set(input_data).intersection(edge_nums)
+            if len(plead_edge) > 0:
+                edge_info.append(ind)
+        return edge_info
 
     @classmethod
     def calculate_zone_ratio(
@@ -1885,6 +2072,38 @@ class GeneticsUtil:
         # Find and return the best individual based on fitness
         best_individual = min([list(item) for item in self.population], key=self.fitness)
         return best_individual
+
+
+class DenoiserUtil:
+    @staticmethod
+    def moving_average(sequence, window_size=3):
+        return np.convolve(sequence, np.ones(window_size)/window_size, mode='valid')
+
+    @staticmethod
+    def median_filter(sequence, kernel_size=3):
+        filtered_sequence = []
+        for i in range(len(sequence)):
+            start = max(0, i - kernel_size // 2)
+            end = min(len(sequence), i + kernel_size // 2 + 1)
+            median_val = np.median(sequence[start:end])
+            filtered_sequence.append(median_val)
+        return filtered_sequence
+
+    @staticmethod
+    def remove_outliers(sequence, threshold=2):
+        mean = np.mean(sequence)
+        std_dev = np.std(sequence)
+        filtered_sequence = [x for x in sequence if np.abs(x - mean) <= threshold * std_dev]
+        return filtered_sequence
+
+    @staticmethod
+    def denoise_wavelet(sequence, wavelet='db1', level=1):
+        coeffs = pywt.wavedec(sequence, wavelet, level=level)
+        # 使用软阈值去噪
+        sigma = np.median(np.abs(coeffs[-level])) / 0.6745
+        uthresh = sigma * np.sqrt(2 * np.log(len(sequence)))
+        coeffs[1:] = (pywt.threshold(i, value=uthresh, mode='soft') for i in coeffs[1:])
+        return pywt.waverec(coeffs, wavelet)
 
 
 class RandomForestRegressorTransformer(BaseEstimator, TransformerMixin):

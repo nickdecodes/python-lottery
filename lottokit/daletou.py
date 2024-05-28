@@ -661,7 +661,13 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # Return the draw number of the next t for the current year
         return next_period
 
-    def get_kill_numbers(self, data: List[Any], next_period: int = None, next_weekday: int = None) -> Tuple[
+    def get_kill_numbers(
+            self,
+            data: List[Any],
+            next_period: int = None,
+            next_weekday: int = None,
+            show_details: str = None
+    ) -> Tuple[
         Set[int], Set[int]]:
         """
         Calculate and return sets of 'kill numbers' for both front and back sequences based on provided data.
@@ -670,6 +676,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             data (List[Any]): The data to process.
             next_period (int, optional): The next period number. If None, it's calculated.
             next_weekday (int, optional): The next weekday number. If None, it's calculated.
+            show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
 
         Returns:
             Tuple[Set[int], Set[int]]: A tuple containing two sets of kill numbers for front and back sequences.
@@ -680,129 +687,221 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         next_weekday = next_weekday or self.get_next_weekday()
         next_period = next_period or self.get_next_period()
 
-        front_kill_numbers = self.calculate_front_kills(front_sequences, next_period, next_weekday)
-        back_kill_numbers = self.calculate_back_kills(back_sequences, next_weekday)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"last award front data: {sorted(front_sequences[-1])}",
+        #                 zh=f"最近一期中奖前区: {sorted(front_sequences[-1])}")
+        front_kill_numbers = self.calculate_front_kills(front_sequences, next_period, next_weekday,
+                                                        show_details=show_details)
+        front_kill_numbers = {num for num in front_kill_numbers if 1 <= num <= self.front_vocab_size}
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"front kill numbers: {sorted(front_kill_numbers)}, size: {len(front_kill_numbers)}",
+        #                 zh=f"前区杀码: {sorted(front_kill_numbers)}, 数量: {len(front_kill_numbers)}")
 
         # Ensure numbers are within the valid range
-        front_kill_numbers = {num for num in front_kill_numbers if 1 <= num <= self.front_vocab_size}
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"last award back data: {sorted(back_sequences[-1])}",
+        #                 zh=f"最近一期中奖后区: {sorted(back_sequences[-1])}")
+        back_kill_numbers = self.calculate_back_kills(back_sequences, next_weekday, show_details=show_details)
         back_kill_numbers = {num for num in back_kill_numbers if 1 <= num <= self.back_vocab_size}
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"back kill numbers: {sorted(back_kill_numbers)}, size: {len(back_kill_numbers)}",
+        #                 zh=f"后区杀码: {sorted(back_kill_numbers)}, 数量: {len(back_kill_numbers)}")
 
         return front_kill_numbers, back_kill_numbers
 
-    @staticmethod
-    def get_same_number_index(pre_data, cur_data):
-        same_number_index = []
-        for ind, num in enumerate(pre_data):
-            if num in cur_data:
-                same_number_index.append(ind + 1)
-        return same_number_index
-
-    @staticmethod
-    def get_edge_number_index(pre_data, cur_data):
-        edge_info = []
-        for ind, num in enumerate(pre_data):
-            edge_nums = set(num + i for i in [-1, 1])
-            plead_edge = set(cur_data).intersection(edge_nums)
-            if len(plead_edge) > 0:
-                edge_info.append(ind + 1)
-        return edge_info
-
-    def calculate_front_kills(self, sequences: List[List[int]], next_period: int, next_weekday: int) -> Set[int]:
+    def calculate_front_kills(
+            self,
+            sequences: List[List[int]],
+            next_period: int,
+            next_weekday: int,
+            show_details: str = None
+    ) -> Set[int]:
         """Helper function to calculate front kill numbers based on the last sequence."""
-
         def train_predict(chunk, func_name, chunk_size=1):
             train_data = [result
                           for c, n in self.get_chunks_with_next(chunk, chunk_size)
                           for result in func_name(c[-1], n)]
             return (
-                {self.exponential_moving_average_next_value(train_data),
-                 self.linear_regression_next_value_by_index(train_data),
-                 self.harmonic_regression_next_value_by_index(train_data)}
+                {
+                    self.exponential_moving_average_next_value(train_data),
+                    self.linear_regression_next_value_by_index(train_data),
+                    self.harmonic_regression_next_value_by_index(train_data)
+                }
                 if len(train_data) > 2 else {}
             )
 
+        kills = set()
         last_sequence = sequences[-1]
-        a1, a2, a3, a4, a5 = last_sequence
-        fb = abs(a5 - a3 - a1)
-        fc = a4 - a2
-        average = sum(last_sequence) // self.front_size
+        odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
+        zone_ratio = self.calculate_zone_ratio(last_sequence, self.front_zone_ranges)
+        zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
+                            max((n - 1 if n != 0 else n) for n in zone_ratio)]
+        euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
+                                                               (odd_even_ratio[0], odd_even_ratio[-1]))
+        indices = [zone_ratio_index[0], zone_ratio_index[-1]]
+        reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
+        zone_ratio_index_num_set = {
+            abs(last_sequence[indices[0]] - last_sequence[indices[1]]) + euclidean_distance,
+            (abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance) % self.front_vocab_size,
+            abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]]) + euclidean_distance,
+            (abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]]) + euclidean_distance) % self.front_vocab_size,
+        }
+        kills.update(zone_ratio_index_num_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"The difference between the sum of the filter zone ratio "
+        #                    f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, size: {len(zone_ratio_index_num_set)}",
+        #                 zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, 数量: {len(zone_ratio_index_num_set)}")
 
-        kills = {fb + t for t in [0, 1, 3, 6] if abs(t) != next_weekday}
-        if fb == 0:
-            kills.update({a1, a3, a5})
-        kills.update({fc, (fc + next_period) % self.front_vocab_size, abs(fc - next_period) % self.front_vocab_size})
-        kills.update({average, sum([a1, a2, a3]) // 3})
-        kills.update({(a1 + a2) - (a3 + a4) - a5, a1 + a2 + a3 + a4 - a5})
+        zone_average_set = set()
+        for zone in self.front_zone_ranges:
+            tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
+            if len(tmp) == 1:
+                unique_index = last_sequence.index(tmp[0])
+                tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
+            zone_average_set.add(self.real_round(sum(tmp) / len(tmp))) if len(tmp) > 0 else None
+        kills.update(zone_average_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+        #                 zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
 
-        # odd_even_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_odd_even_ratio(sequences[-1]))]
-        zone_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_zone_ratio(sequences[-1],
-                                                                                    self.front_zone_ranges))]
-        span = self.calculate_span(sequences[-1])
-        edge_index = train_predict(sequences, self.get_edge_number_index)
-        same_index = train_predict(sequences, self.get_edge_number_index)
-        kills.update({
-            abs(sequences[-1][zone_ratio[0]] - sequences[-1][zone_ratio[-1]]),
-            (sequences[-1][zone_ratio[0]] + sequences[-1][zone_ratio[-1]]) % 35,
-            abs(sequences[-1][-zone_ratio[0]] - sequences[-1][-zone_ratio[-1]]),
-            (sequences[-1][-zone_ratio[0]] + sequences[-1][-zone_ratio[-1]]) % 35,
-            abs(sequences[-1][0] - span),
-            (sequences[-1][-1] + span) % 35,
-            span
-        })
-        if edge_index:
-            kills.update(sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(5) for i in [-1, 1])
+        sum_total = self.calculate_sum_total(last_sequence)
+        sum_total_average_set = {
+            self.real_round(sum_total / self.front_size),
+            self.real_round((min(last_sequence) + max(last_sequence)) / 2)
+        }
+        kills.update(sum_total_average_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"sum total average add: {sorted(sum_total_average_set)}, size: {len(sum_total_average_set)}",
+        #                 zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, 数量: {len(sum_total_average_set)}")
 
-        if same_index:
-            kills.update(sequences[-1][same - 1] for same in same_index if same - 1 in range(5))
+        span = self.calculate_span(last_sequence)
+        span_set = {abs(last_sequence[0] - span), (last_sequence[-1] + span) % 35, span - next_weekday}
+        kills.update(span_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+        #                 zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
+        edge_indexs = train_predict(sequences, self.calculate_edge_number_index)
+        previous_edge_index = self.calculate_edge_number_index(sequences[-2], last_sequence)
+        edge_indexs.update(set(previous_edge_index))
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"predict maybe edge indexs: {edge_indexs}",
+        #                 zh=f"预测可能的边号下标: {edge_indexs}")
+        if edge_indexs:
+            for edge in range(self.front_size):
+                if edge + 1 not in edge_indexs:
+                    kills.update(last_sequence[edge] + i for i in [-1, 1])
+
+        same_indexs = train_predict(sequences, self.calculate_same_number_index)
+        previous_same_index = self.calculate_same_number_index(sequences[-2], last_sequence)
+        same_indexs.update(set(previous_same_index))
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"predict maybe same index: {same_indexs}",
+        #                 zh=f"预测可能的同号下标: {same_indexs}")
+        if same_indexs:
+            for same in range(self.front_size):
+                if same + 1 not in same_indexs:
+                    kills.update({last_sequence[same]})
 
         return kills
 
-    def calculate_back_kills(self, sequences: List[List[int]], next_weekday: int) -> Set[int]:
+    def calculate_back_kills(self, sequences: List[List[int]], next_weekday: int, show_details: str = None) -> Set[int]:
         """Helper function to calculate back kill numbers based on the last sequence."""
-
         def train_predict(chunk, func_name, chunk_size=1):
             train_data = [result
                           for c, n in self.get_chunks_with_next(chunk, chunk_size)
                           for result in func_name(c[-1], n)]
             return (
-                {self.exponential_moving_average_next_value(train_data),
-                 self.linear_regression_next_value_by_index(train_data),
-                 self.harmonic_regression_next_value_by_index(train_data)}
+                {
+                    self.exponential_moving_average_next_value(train_data),
+                    self.linear_regression_next_value_by_index(train_data),
+                    self.harmonic_regression_next_value_by_index(train_data)
+                }
                 if len(train_data) > 2 else {}
             )
 
+        kills = set()
         last_sequence = sequences[-1]
-        b1, b2 = last_sequence
-        bb = abs(b1 - b2)
-        kills = {bb + t for t in [0, 1, 3, 6] if abs(t) != next_weekday}
-        kills.update(sequences[-2])
-        if bb == 0:
-            kills.update({b1, b2})
-        kills.update({sum(last_sequence) // self.back_size})
+        odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
+        zone_ratio = self.calculate_zone_ratio(last_sequence, self.back_zone_ranges)
+        zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
+                            max((n - 1 if n != 0 else n) for n in zone_ratio)]
+        euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
+                                                               (odd_even_ratio[0], odd_even_ratio[-1]))
+        indices = [zone_ratio_index[0], zone_ratio_index[-1]]
+        reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
+        zone_ratio_index_num_set = {
+            abs(last_sequence[indices[0]] - last_sequence[indices[1]]) + euclidean_distance,
+            # (abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance) % self.back_vocab_size,
+            abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]]) + euclidean_distance,
+            # (abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]]) + euclidean_distance) % self.back_vocab_size,
+        }
+        kills.update(zone_ratio_index_num_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"The difference between the sum of the filter zone ratio "
+        #                    f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, size: {len(zone_ratio_index_num_set)}",
+        #                 zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, 数量: {len(zone_ratio_index_num_set)}")
 
-        # odd_even_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_odd_even_ratio(sequences[-1]))]
-        zone_ratio = [n - 1 if n != 0 else n for n in set(self.calculate_zone_ratio(sequences[-1],
-                                                                                    self.back_zone_ranges))]
-        span = self.calculate_span(sequences[-1])
-        edge_index = train_predict(sequences, self.get_edge_number_index)
-        same_index = train_predict(sequences, self.get_edge_number_index)
-        kills.update({
-            abs(sequences[-1][zone_ratio[0]] - sequences[-1][zone_ratio[-1]]),
-            (sequences[-1][zone_ratio[0]] + sequences[-1][zone_ratio[-1]]) % 35,
-            abs(sequences[-1][-zone_ratio[0]] - sequences[-1][-zone_ratio[-1]]),
-            (sequences[-1][-zone_ratio[0]] + sequences[-1][-zone_ratio[-1]]) % 35,
-            abs(sequences[-1][0] - span),
-            (sequences[-1][-1] + span) % 35,
-            span
-        })
-        if edge_index:
-            kills.update(sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(5) for i in [-1, 1])
+        zone_average_set = set()
+        for zone in self.back_zone_ranges:
+            tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
+            if len(tmp) == 1:
+                unique_index = last_sequence.index(tmp[0])
+                tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
+            zone_average_set.add(self.real_round(sum(tmp) / len(tmp))) if len(tmp) > 0 else None
+        kills.update(zone_average_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+        #                 zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
 
-        if same_index:
-            kills.update(sequences[-1][same - 1] for same in same_index if same - 1 in range(5))
+        sum_total = self.calculate_sum_total(last_sequence)
+        sum_total_average_set = {
+            self.real_round(sum_total / self.back_size),
+            self.real_round((min(last_sequence) + max(last_sequence)) / 2)
+        }
+        kills.update(sum_total_average_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"sum total average add: {sorted(sum_total_average_set)}, size: {len(sum_total_average_set)}",
+        #                 zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, 数量: {len(sum_total_average_set)}")
+
+        span = self.calculate_span(last_sequence)
+        span_set = {abs(last_sequence[0] - span), (last_sequence[-1] + span) % 35, span - next_weekday}
+        kills.update(span_set)
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+        #                 zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
+        edge_indexs = train_predict(sequences, self.calculate_edge_number_index)
+        # previous_edge_index = self.calculate_edge_number_index(sequences[-2], last_sequence)
+        # edge_indexs.update(set(previous_edge_index))
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"predict maybe edge indexs: {edge_indexs}",
+        #                 zh=f"预测可能的边号下标: {edge_indexs}")
+        if edge_indexs:
+            for edge in range(self.back_size):
+                if edge + 1 not in edge_indexs:
+                    kills.update(last_sequence[edge] + i for i in [-1, 1])
+
+        same_indexs = train_predict(sequences, self.calculate_same_number_index)
+        # previous_same_index = self.calculate_same_number_index(sequences[-2], last_sequence)
+        # same_indexs.update(set(previous_same_index))
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"predict maybe same index: {same_indexs}",
+        #                 zh=f"预测可能的同号下标: {same_indexs}")
+        if same_indexs:
+            for same in range(self.back_size):
+                if same + 1 not in same_indexs:
+                    kills.update({last_sequence[same]})
+
         return kills
 
-    def get_banker_numbers(self, data: List[Any], next_period: int = None, next_weekday: int = None) -> Tuple[
+    def get_banker_numbers(
+            self,
+            data: List[Any],
+            next_period: int = None,
+            next_weekday: int = None,
+            show_details: str = None
+    ) -> Tuple[
         Set[int], Set[int]]:
         """
         Calculate and return sets of 'banker numbers' for both front and back sequences based on provided data.
@@ -811,6 +910,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             data (List[Any]): The data to process.
             next_period (int, optional): The next period number. If None, it's calculated.
             next_weekday (int, optional): The next weekday number. If None, it's calculated.
+            show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
 
         Returns:
             Tuple[Set[int], Set[int]]: A tuple containing two sets of banker numbers for front and back sequences.
@@ -820,23 +920,57 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         next_weekday = next_weekday or self.get_next_weekday()
         next_period = next_period or self.get_next_period()
 
+        # Ensure front numbers are within the valid range
         front_banker_numbers = self.calculate_front_bankers(front_sequences, next_period, next_weekday)
-        back_backer_numbers = self.calculate_back_bankers(back_sequences, next_weekday)
-
-        # Ensure numbers are within the valid range
         front_banker_numbers = {num for num in front_banker_numbers if 1 <= num <= self.front_vocab_size}
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"back banker numbers: {sorted(front_banker_numbers)}, size: {len(front_banker_numbers)}",
+        #                 zh=f"前区胆码: {sorted(front_banker_numbers)}, 数量: {len(front_banker_numbers)}")
+
+        # Ensure back numbers are within the valid range
+        back_backer_numbers = self.calculate_back_bankers(back_sequences, next_weekday)
         back_banker_numbers = {num for num in back_backer_numbers if 1 <= num <= self.back_vocab_size}
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"back banker numbers: {sorted(back_banker_numbers)}, size: {len(back_banker_numbers)}",
+        #                 zh=f"后区胆码: {sorted(back_banker_numbers)}, 数量: {len(back_banker_numbers)}")
 
         return front_banker_numbers, back_banker_numbers
 
-    @staticmethod
-    def calculate_front_bankers(sequences: List[List[int]], next_period: int, next_weekday: int) -> Set[int]:
+    def calculate_front_bankers(
+            self,
+            sequences: List[List[int]],
+            next_period: int,
+            next_weekday: int,
+            show_details: str = None
+    ) -> Set[int]:
         """Helper function to calculate front banker numbers based on the last sequence."""
-        last_sequence = sequences[-1]
-        a1, a2, a3, a4, a5 = last_sequence
-        bankers = {a1, a2, a3, a4, a5}
-        for i in last_sequence:
-            bankers.update({i - 1, i + 1})
+
+        def train_predict(chunk, func_name, chunk_size=1):
+            train_data = [result
+                          for c, n in self.get_chunks_with_next(chunk, chunk_size)
+                          for result in func_name(c[-1], n)]
+            return (
+                {self.exponential_moving_average_next_value(train_data),
+                 self.linear_regression_next_value_by_index(train_data),
+                 self.harmonic_regression_next_value_by_index(train_data)}
+                if len(train_data) > 2 else {}
+            )
+
+        bankers = set()
+        edge_index = train_predict(sequences, self.calculate_edge_number_index)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"predict maybe edge index: {edge_index}",
+                        zh=f"预测可能的边号下标: {edge_index}")
+        if edge_index:
+            bankers.update(sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(self.front_size) for i in [-1, 1])
+        previous_edge_index = self.calculate_edge_number_index(sequences[-2], sequences[-1])
+        bankers.update(sequences[-1][edge - 1] + i for edge in previous_edge_index if edge - 1 in range(5) for i in [-1, 1])
+
+        same_index = train_predict(sequences, self.calculate_same_number_index)
+        if same_index:
+            bankers.update(sequences[-1][same - 1] for same in same_index if same - 1 in range(self.front_size))
+        previous_same_index = self.calculate_same_number_index(sequences[-2], sequences[-1])
+        bankers.update(sequences[-1][same - 1] for same in previous_same_index if same - 1 in range(5))
         return bankers
 
     @staticmethod
@@ -932,7 +1066,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # If none of the above conditions are met, raise an IndexError.
         raise IndexError(f'length:{length} does not match any expected size')
 
-    def calculate_back(self, data: Iterable[int]) -> List[int]:
+    def calculate_back(self, data: Iterable[Any]) -> List[int]:
         """
         Calculate the 'back' portion of the data based on predefined size settings.
 
@@ -1171,48 +1305,48 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     def predict_by_last_period(
             self,
             next_period: int = None,
-            show_details: bool = False,
+            show_details: str = None,
             window_size: int = 15
     ) -> List[List[int]]:
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_period: int eg: 24001
-        :param show_details: boolean flag to output details about the prediction
+        :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, default is 15
         """
         history_data = self.get_previous_history_data(next_period=next_period)
 
         maybe_combinations = self.predict_by_last_window_data(history_data, window=window_size)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
-        self.app_log.info(predict_data) if show_details is True else None
+        self.detail_log(app_log=self.app_log, show_details=show_details, en=predict_data, zh=predict_data)
 
         handle_result = self.handle_last_window_data(data=history_data, window=window_size)
-        self.app_log.info(handle_result) if show_details is True else None
+        self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
         return predict_data
 
     def predict_by_same_period(
             self,
             next_period: int = None,
-            show_details: bool = False,
+            show_details: str = None,
             window_size: int = 15
     ) -> List[List[int]]:
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_period: int eg: 24001
-        :param show_details: boolean flag to output details about the prediction
+        :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, default is 15
         """
         period_data = self.get_previous_period_data(next_period=next_period)
 
         maybe_combinations = self.predict_by_last_window_data(period_data, window=window_size)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
-        self.app_log.info(predict_data) if show_details is True else None
+        self.detail_log(app_log=self.app_log, show_details=show_details, en=predict_data, zh=predict_data)
 
         handle_result = self.handle_last_window_data(data=period_data, window=window_size)
-        self.app_log.info(handle_result) if show_details is True else None
+        self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
         return predict_data
 
@@ -1220,7 +1354,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             self,
             next_weekday: int = None,
             next_period: int = None,
-            show_details: bool = False,
+            show_details: str = None,
             window_size: int = 15
     ) -> List[List[int]]:
         """
@@ -1228,17 +1362,17 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_weekday: int eg: [1 | 3 | 6]
         :param next_period: int eg: 24001
-        :param show_details: boolean flag to output details about the prediction
+        :param show_details: ['en' | 'zh'] flag to output details about the prediction, default is None
         :param window_size: int, default is 15
         """
         weekday_data = self.get_previous_weekday_data(next_weekday=next_weekday, next_period=next_period)
 
         maybe_combinations = self.predict_by_last_window_data(weekday_data, window=window_size)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
-        self.app_log.info(predict_data) if show_details is True else None
+        self.detail_log(app_log=self.app_log, show_details=show_details, en=predict_data, zh=predict_data)
 
         handle_result = self.handle_last_window_data(data=weekday_data, window=window_size)
-        self.app_log.info(handle_result) if show_details is True else None
+        self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
         return predict_data
 
@@ -1246,13 +1380,13 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             self,
             next_period: int = None,
             next_weekday: int = None,
-            show_details: bool = False,
+            show_details: str = None,
             window_size: int = 15
     ) -> List[List[int]]:
         """
         :param next_period: int eg: 24001
         :param next_weekday: int eg: [1 | 3 | 6]
-        :param show_details: boolean flag to output details about the prediction
+        :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, the default is 15
         """
         predictions = []
@@ -1267,8 +1401,10 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                                                         show_details=show_details,
                                                         window_size=window_size))
 
-        if show_details is True:
-            self.app_log.info("The following is a preliminary forecast of the data analysis : ")
+        if show_details:
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="The following is a preliminary forecast of the data analysis : ",
+                            zh='以下是对数据分析的初步预测:')
             # Splitting the data into first 5 and last 2 numbers
             front_zone = [num for row in predictions for num in row[:5]]
             back_zone = [num for row in predictions for num in row[5:]]
@@ -1282,17 +1418,31 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             sorted_back_zone_frequency = sorted(back_zone_frequency.items(), key=lambda x: x[1], reverse=True)
 
             # Printing the results
-            self.app_log.info("Counts of the front zone numbers in each row sorted by frequency:")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="Counts of the front zone numbers in each row sorted by frequency:",
+                            zh='按频次排序的前区号计数:')
             for number, count in sorted_front_zone_frequency:
-                self.app_log.info(f"Number {number}: {count} times")
-            self.app_log.info(f"Total count of the front zone numbers in each row: {len(sorted_front_zone_frequency)}")
+                self.detail_log(app_log=self.app_log, show_details=show_details,
+                                en=f"Number {number}: {count} times",
+                                zh=f"数字 {number}: {count} 次")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"Total count of the front zone numbers in each row: {len(sorted_front_zone_frequency)}",
+                            zh=f"前区号码总数: {len(sorted_front_zone_frequency)}")
 
-            self.app_log.info("\nCounts of the back zone numbers in each row sorted by frequency:")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="\nCounts of the back zone numbers in each row sorted by frequency:",
+                            zh="\n按频率排序的后区编号计数:")
             for number, count in sorted_back_zone_frequency:
-                self.app_log.info(f"Number {number}: {count} times")
-            self.app_log.info(f"Total count of the back zone numbers in each row: {len(sorted_back_zone_frequency)}")
+                self.detail_log(app_log=self.app_log, show_details=show_details,
+                                en=f"Number {number}: {count} times",
+                                zh=f"数字 {number}: {count} 次")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"Total count of the front zone numbers in each row: {len(sorted_back_zone_frequency)}",
+                            zh=f"后区号码总数: {len(sorted_back_zone_frequency)}")
 
-            self.app_log.info("\nHere are the preliminary predictions: ")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="\nHere are the preliminary predictions: ",
+                            zh="\n以下是初步预测:")
             for data in predictions:
                 self.app_log.info(', '.join(map(str, data)))
         return predictions
@@ -1361,85 +1511,110 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             self,
             next_period: int = None,
             next_weekday: int = None,
-            show_details: bool = False,
+            show_details: str = None,
             window_size: int = 15
     ) -> List[List[int]]:
         """
         :param next_period: int eg: 24001
         :param next_weekday: int eg: [1 | 3 | 6]
-        :param show_details: boolean flag to output details about the prediction
+        :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, the default is 15
         """
-        # use model predict combinations and handle number set
+        # use analyze predict combinations and handle number set
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en="Make initial predictions using model predictions",
+                        zh="使用模型预测进行初步预测")
         predict_data = self.model_predict(next_period=next_period, next_weekday=next_weekday,
-                                          show_details=False, window_size=window_size)
-        predict_front_set, predict_back_set = set(), set()
+                                          show_details=None, window_size=window_size)
         for data in predict_data:
-            predict_front_set.update(self.calculate_front(data))
-            predict_back_set.update(self.calculate_back(data))
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=', '.join(f'{num:>2}' for num in data),
+                            zh=', '.join(f'{num:>2}' for num in data))
+        predict_data_front = [self.calculate_front(data) for data in predict_data]
+        predict_front_set = {num for data in predict_data_front for num in data}
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict front: {sorted(predict_front_set)}, size: {len(predict_front_set)}",
+                        zh=f"模型预测前区数字: {sorted(predict_front_set)}, 数量: {len(predict_front_set)}")
+
+        predict_data_back = [self.calculate_back(data) for data in predict_data]
+        predict_back_set = {num for data in predict_data_back for num in data}
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict back: {sorted(predict_back_set)}, size: {len(predict_back_set)}",
+                        zh=f"模型预测后区数字: {sorted(predict_back_set)}, 数量: {len(predict_back_set)}")
+
         exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(predict_front_set)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict exclude front: {sorted(exclude_front_set)}, size: {len(exclude_front_set)}",
+                        zh=f"模型预测前区排除数字: {sorted(exclude_front_set)}, 数量: {len(exclude_front_set)}")
+
         exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(predict_back_set)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict exclude front: {sorted(exclude_back_set)}, size: {len(exclude_back_set)}",
+                        zh=f"模型预测后区排除数字: {sorted(exclude_back_set)}, 数量: {len(exclude_back_set)}")
 
-        # generate kill and banker numbers
+        # ready data
         history_data = self.get_previous_history_data(next_period=next_period)
-        period_data = self.get_previous_period_data(next_period=next_period)
-        weekday_data = self.get_previous_weekday_data(next_period=next_period, next_weekday=next_weekday)
-        front_kill_numbers, back_kill_numbers = self.get_kill_numbers(history_data, next_period=next_period,
-                                                                      next_weekday=next_weekday)
-        front_banker_numbers, back_banker_numbers = self.get_banker_numbers(history_data, next_period=next_period,
-                                                                            next_weekday=next_weekday)
+        period_data = [self.convert_lottery_data(d) for d in self.get_previous_period_data(next_period=next_period)]
+        weekday_data = [self.convert_lottery_data(d) for d in self.get_previous_weekday_data(next_period=next_period,
+                                                                                             next_weekday=next_weekday)]
+        data_map = {
+            'history': history_data,
+            'period': period_data,
+            'weekday': weekday_data
+        }
 
-        self.app_log.info("Now, Will analyze the predictions..., Then adjust data")
+        # generate kill numbers
+        front_kill_numbers, back_kill_numbers = set(), set()
+        for key, val in data_map.items():
+            # self.detail_log(app_log=self.app_log, show_details=show_details,
+            #                 en=f"analyze last {window_size} {key} get kill data:",
+            #                 zh=f"分析最近 {window_size} {key} 获得杀码数据:")
+            kill_numbers = self.get_kill_numbers(val[-window_size:], next_period=next_period,
+                                                 next_weekday=next_weekday, show_details=show_details)
+            front_kill_numbers.update(kill_numbers[0])
+            back_kill_numbers.update(kill_numbers[1])
+
+        # generate banker numbers
+        front_banker_numbers, back_banker_numbers = set(), set()
+        for key, val in data_map.items():
+            # self.detail_log(app_log=self.app_log, show_details=show_details,
+            #                 en=f"analyze last {window_size} {key} get banker data:",
+            #                 zh=f"分析最近 {window_size} {key} 获得胆码数据:")
+            banker_numbers = self.get_banker_numbers(val[-window_size:], next_period=next_period,
+                                                     next_weekday=next_weekday, show_details=show_details)
+            front_banker_numbers.update(banker_numbers[0])
+            back_banker_numbers.update(banker_numbers[1])
+
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en="Now, Will analyze the predictions..., Then adjust data",
+                        zh="现在，将会分析这些预测…，然后调整数据")
         # Calculate available numbers avoiding both kill and banker numbers for the front
-        available_front_numbers = set(range(1, self.front_vocab_size + 1)) - front_kill_numbers - front_banker_numbers
-        # Calculate intersection of kill and banker numbers for the back
-        available_back_numbers = back_kill_numbers & back_banker_numbers
-
-        # Convert sets to lists for sampling
-        available_front_numbers = list(available_front_numbers)
-        available_back_numbers = list(available_back_numbers)
-
         predictions = []
         random.seed(self.calculate_sum_total(self.calculate_front(history_data[-1])))
-        # Generate a prediction if there are enough numbers to sample from
-        if len(available_front_numbers) >= 5 and len(available_back_numbers) >= 2:
-            fd = sorted(available_front_numbers) if len(available_front_numbers) == 5 else sorted(
-                random.sample(list(available_front_numbers), 5))
-            bd = sorted(available_back_numbers) if len(available_back_numbers) == 2 else sorted(
-                random.sample(list(available_back_numbers), 2))
-            predictions.append(fd + bd)
-
-        # Generate prediction from kill numbers if there are enough
-        if len(front_kill_numbers) >= 5 and len(available_back_numbers) >= 2:
-            fd = sorted(front_kill_numbers) if len(front_kill_numbers) == 5 else sorted(
-                random.sample(list(front_kill_numbers), 5))
-            bd = sorted(available_back_numbers) if len(available_back_numbers) == 2 else sorted(
-                random.sample(list(available_back_numbers), 2))
-            predictions.append(fd + bd)
-
-        # Generate prediction from banker numbers if there are enough
-        if len(front_banker_numbers) >= 5 and len(available_back_numbers) >= 2:
-            fd = sorted(front_banker_numbers) if len(front_banker_numbers) == 5 else sorted(
-                random.sample(list(front_banker_numbers), 5))
-            bd = sorted(available_back_numbers) if len(available_back_numbers) == 2 else sorted(
-                random.sample(list(available_back_numbers), 2))
-            predictions.append(fd + bd)
 
         # Combine front and back combinations
-        if show_details is True:
-            self.app_log.info("The following is a preliminary forecast of the data analysis : ")
-            self.app_log.info(f"available front numbers: {available_front_numbers}")
-            self.app_log.info(f"available back numbers: {available_back_numbers}")
-            self.app_log.info(f"front kill numbers: {front_kill_numbers}")
-            self.app_log.info(f"back kill numbers: {back_kill_numbers}")
-            self.app_log.info(f"front banker numbers: {front_banker_numbers}")
-            self.app_log.info(f"back banker numbers: {back_banker_numbers}")
+        if show_details:
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="The following is a preliminary forecast of the data analysis : ",
+                            zh="以下是对数据分析的初步预测:")
+            # kill
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"front kill numbers: {front_kill_numbers}, size: {len(front_kill_numbers)}",
+                            zh=f"前区杀码: {front_kill_numbers}, 数量: {len(front_kill_numbers)}")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"back kill numbers: {back_kill_numbers}, size: {len(back_kill_numbers)}",
+                            zh=f"后区杀码: {back_kill_numbers}, 数量: {len(back_kill_numbers)}")
+            # banker
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"front banker numbers: {front_banker_numbers}, size: {len(front_banker_numbers)}",
+                            zh=f"前区胆码: {front_banker_numbers}, 数量: {len(front_banker_numbers)}")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"back banker numbers: {back_banker_numbers}, size: {len(back_banker_numbers)}",
+                            zh=f"后区胆码: {back_banker_numbers}, 数量: {len(back_banker_numbers)}")
 
-            self.app_log.info(f"last combination: {history_data[-1]}")
-            self.app_log.info(f"model predict front: {sorted(predict_front_set)}")
-            self.app_log.info(f"model predict back: {sorted(predict_back_set)}")
-            self.app_log.info(f"exclude model predict front: {sorted(exclude_front_set)}")
-            self.app_log.info(f"exclude model predict back: {sorted(exclude_back_set)}")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"last combination: {history_data[-1]}",
+                            zh=f"最近一期中奖数据: {history_data[-1]}")
 
             # Splitting the data into first 5 and last 2 numbers
             front_zone = [num for row in predictions for num in row[:5]]
@@ -1454,26 +1629,45 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             sorted_back_zone_frequency = sorted(back_zone_frequency.items(), key=lambda x: x[1], reverse=True)
 
             # Printing the results
-            self.app_log.info("Counts of the front zone numbers in each row sorted by frequency:")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="Counts of the front zone numbers in each row sorted by frequency:",
+                            zh='按频次排序的前区号计数:')
             for number, count in sorted_front_zone_frequency:
-                self.app_log.info(f"Number {number}: {count} times")
-            self.app_log.info(f"Total count of the front zone numbers in each row: {len(sorted_front_zone_frequency)}")
+                self.detail_log(app_log=self.app_log, show_details=show_details,
+                                en=f"Number {number}: {count} times",
+                                zh=f"数字 {number}: {count} 次")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"Total count of the front zone numbers in each row: {len(sorted_front_zone_frequency)}",
+                            zh=f"前区号码总数: {len(sorted_front_zone_frequency)}")
 
-            self.app_log.info("\nCounts of the back zone numbers in each row sorted by frequency:")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="\nCounts of the back zone numbers in each row sorted by frequency:",
+                            zh="\n按频率排序的后区编号计数:")
             for number, count in sorted_back_zone_frequency:
-                self.app_log.info(f"Number {number}: {count} times")
-            self.app_log.info(f"Total count of the back zone numbers in each row: {len(sorted_back_zone_frequency)}")
+                self.detail_log(app_log=self.app_log, show_details=show_details,
+                                en=f"Number {number}: {count} times",
+                                zh=f"数字 {number}: {count} 次")
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"Total count of the front zone numbers in each row: {len(sorted_back_zone_frequency)}",
+                            zh=f"后区号码总数: {len(sorted_back_zone_frequency)}")
 
-            self.app_log.info("\nHere are the preliminary predictions: ")
-            for data in predictions:
-                self.app_log.info(', '.join(map(str, data)))
-        return predictions
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en="\nHere are the preliminary predictions: ",
+                            zh="\n以下是初步预测:")
+
+            # for data in predictions:
+            #     self.app_log.info(', '.join(map(str, data)))
+            self.print_matrix([self.calculate_front(history_data[-1])] + [list(front_kill_numbers)] + predict_data_front,
+                              self.front_vocab_size)
+            self.print_matrix([self.calculate_back(history_data[-1])] + [list(back_kill_numbers)] + predict_data_back,
+                              self.back_vocab_size)
+        return []
 
     def predict(
             self,
             next_period: int = None,
             next_weekday: int = None,
-            show_details: bool = False,
+            show_details: str = None,
             window_size: int = 15,
             predict_type: str = 'model'
     ) -> List[List[int]]:
@@ -1483,7 +1677,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Parameters:
         next_period (int, optional): The next period to predict, defaults to None.
         next_weekday (int, optional): The next weekday to predict, defaults to None.
-        show_details (bool): Whether to show detailed predictions, defaults to False.
+        show_details (str): ['en' | 'zh'] Whether to show detailed predictions, defaults is None.
         window_size (int): The window size used for predictions, defaults to 15.
         predict_type (str): The type of prediction, can be 'model', 'analyze', or 'train', defaults to 'model'.
 
