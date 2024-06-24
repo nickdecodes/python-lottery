@@ -42,10 +42,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 class IOUtil:
     @classmethod
-    def get_logger(
-            cls,
-            log_file: str = None
-    ) -> logging.Logger:
+    def get_logger(cls, log_file: str = None) -> logging.Logger:
         # Choose a unique logger name based on the log_file argument
         logger_name = log_file if log_file is not None else 'default_logger'
         # Get the logger instance by name
@@ -96,12 +93,7 @@ class IOUtil:
             print()
 
     @classmethod
-    def list_to_int(
-            cls,
-            numbers: List[int],
-            zero_replacement: str = '',
-            **kwargs: Any
-    ) -> int:
+    def list_to_int(cls, numbers: List[int], zero_replacement: str = '', **kwargs: Any) -> int:
         """
         Convert a list of integers to a single integer, with an optional replacement for zeros.
 
@@ -124,12 +116,7 @@ class IOUtil:
         return int(''.join(parts))
 
     @classmethod
-    def int_to_list(
-            cls,
-            number: int,
-            modulus: int = 10,
-            **kwargs: Any
-    ) -> List[int]:
+    def int_to_list(cls, number: int, modulus: int = 10, **kwargs: Any) -> List[int]:
         """
         Convert an integer to a list of digits, each digit is the remainder of division by a modulus.
 
