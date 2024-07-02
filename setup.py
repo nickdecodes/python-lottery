@@ -12,8 +12,11 @@
 
 from setuptools import setup, find_packages
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+
+def readme():
+    with open("README.md", "r", encoding="utf-8") as f:
+        return f.read()
+
 
 setup(
     name='lottokit',
@@ -25,7 +28,7 @@ setup(
     author="nickdecodes",
     author_email="nickdecodes@163.com",
     description="Lotto Kit Package",
-    long_description=long_description,
+    long_description=readme(),
     long_description_content_type="text/markdown",
     python_requires=">=3.9",
     install_requires=[
@@ -39,10 +42,13 @@ setup(
         'pmdarima>=2.0.4',
         'pywavelets>=1.6.0',
         'requests',
-        'twine'
+        'twine>=4.0.2',
+        'build>=1.2.1',
+        'installer>=0.7.0'
     ],
     project_urls={
         "Documentation": "http://python-lottokit.readthedocs.io",
         "Source": "https://github.com/nickdecodes/python-lottokit",
     },
+    license='Apache License 2.0'
 )
