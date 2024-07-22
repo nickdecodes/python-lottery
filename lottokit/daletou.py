@@ -10,16 +10,19 @@
 @SoftWare:
 """
 
+import re
 import os
-import random
 import time
 import math
-from datetime import datetime, timedelta
+import random
 from itertools import combinations
+from datetime import datetime, timedelta
 from collections import Counter, namedtuple
-from typing import List, Tuple, Any, Optional, Union, Dict, NamedTuple, Callable, Generator, Iterable, Set
+from typing import List, Tuple, Any, Optional, Union, Dict, NamedTuple, Callable, Iterable, Set
 from selenium.webdriver.common.by import By
-from .util import IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil, re, WebDriverWait, EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from .utils import IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil
 
 
 class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
@@ -504,30 +507,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
     Static methods with no side effects
     """
 
-    @staticmethod
-    def get_chunks_with_next(data: List[Any],
-                             chunk_size: int = 10) -> Generator[Tuple[List[Any], Optional[Any]], None, None]:
-        """
-        Yields consecutive chunks of size `chunk_size` from `data` after removing elements from the start of `data`
-        based on the remainder of the length of `data` divided by `chunk_size`. Exits if the next element is None.
-
-        :param data: The list of data from which to extract chunks.
-        :param chunk_size: The size of each chunk. Default is 10.
-        :yield: Tuples containing a chunk and the next element, if it exists.
-        """
-        # Calculate the number of elements to remove from the beginning of the list
-        remainder = len(data) % chunk_size
-        if remainder > 0:
-            data = data[remainder:]
-
-        # Generate the chunks and the next element
-        for i in range(0, len(data)):
-            chunk = data[i:i + chunk_size]
-            next_element = data[i + chunk_size] if i + chunk_size < len(data) else None
-            if next_element is None:
-                break  # Break if we've reached or passed the end of the list
-            yield chunk, next_element
-
     """
     other instance method
     """
@@ -608,7 +587,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # self.analyze_omitted_numbers([*old_data[-9:], *new_data])
 
     @staticmethod
-    def get_next_weekday() -> int:
+    def get_next_weekday(date_string: str = None) -> int:
         """
         Gets the next t day based on the current day and time.
         The draw days are determined as follows:
@@ -622,7 +601,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Returns:
             int: The next draw day (1 for Sunday/Monday, 3 for Tuesday/Wednesday, 6 for Thursday-Saturday).
         """
-        now: datetime = datetime.now()
+        now = datetime.now() if date_string is None else datetime.strptime(date_string, "%Y-%m-%d")
         weekday: int = now.weekday()
         hour: int = now.hour
         minute: int = now.minute
@@ -632,8 +611,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             return 3 if weekday <= 2 else 6 if weekday <= 5 else 1
 
     @staticmethod
-    def get_next_period() -> int:
-        now = datetime.now()
+    def get_next_period(date_string: str = None) -> int:
+        now = datetime.now() if date_string is None else datetime.strptime(date_string, "%Y-%m-%d")
         current_year = now.year
         # Determine the first day of the year
         first_day_of_year = datetime(current_year, 1, 1)
@@ -667,8 +646,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             next_period: int = None,
             next_weekday: int = None,
             show_details: str = None
-    ) -> Tuple[
-        Set[int], Set[int]]:
+    ) -> Tuple[Set[int], Set[int]]:
         """
         Calculate and return sets of 'kill numbers' for both front and back sequences based on provided data.
 
@@ -717,9 +695,10 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             show_details: str = None
     ) -> Set[int]:
         """Helper function to calculate front kill numbers based on the last sequence."""
+
         def train_predict(chunk, func_name, chunk_size=1):
             train_data = [result
-                          for c, n in self.get_chunks_with_next(chunk, chunk_size)
+                          for c, n in self.generate_chunks_with_next(chunk, chunk_size)
                           for result in func_name(c[-1], n)]
             return (
                 {
@@ -744,13 +723,16 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             abs(last_sequence[indices[0]] - last_sequence[indices[1]]) + euclidean_distance,
             (abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance) % self.front_vocab_size,
             abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]]) + euclidean_distance,
-            (abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]]) + euclidean_distance) % self.front_vocab_size,
+            (abs(last_sequence[reverse_indices[0]] + last_sequence[
+                reverse_indices[1]]) + euclidean_distance) % self.front_vocab_size,
         }
         kills.update(zone_ratio_index_num_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"The difference between the sum of the filter zone ratio "
-        #                    f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, size: {len(zone_ratio_index_num_set)}",
-        #                 zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, 数量: {len(zone_ratio_index_num_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"The difference between the sum of the filter zone ratio "
+                           f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
+                           f"size: {len(zone_ratio_index_num_set)}",
+                        zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
+                           f"数量: {len(zone_ratio_index_num_set)}")
 
         zone_average_set = set()
         for zone in self.front_zone_ranges:
@@ -760,9 +742,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
             zone_average_set.add(self.real_round(sum(tmp) / len(tmp))) if len(tmp) > 0 else None
         kills.update(zone_average_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
-        #                 zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+                        zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
 
         sum_total = self.calculate_sum_total(last_sequence)
         sum_total_average_set = {
@@ -770,46 +752,49 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             self.real_round((min(last_sequence) + max(last_sequence)) / 2)
         }
         kills.update(sum_total_average_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"sum total average add: {sorted(sum_total_average_set)}, size: {len(sum_total_average_set)}",
-        #                 zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, 数量: {len(sum_total_average_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"sum total average add: {sorted(sum_total_average_set)}, "
+                           f"size: {len(sum_total_average_set)}",
+                        zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
+                           f"数量: {len(sum_total_average_set)}")
 
         span = self.calculate_span(last_sequence)
         span_set = {abs(last_sequence[0] - span), (last_sequence[-1] + span) % 35, span - next_weekday}
         kills.update(span_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
-        #                 zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+                        zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
 
-        edge_indexs = train_predict(sequences, self.calculate_edge_number_index)
+        edge_indexes = train_predict(sequences, self.calculate_edge_number_index)
         previous_edge_index = self.calculate_edge_number_index(sequences[-2], last_sequence)
-        edge_indexs.update(set(previous_edge_index))
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"predict maybe edge indexs: {edge_indexs}",
-        #                 zh=f"预测可能的边号下标: {edge_indexs}")
-        if edge_indexs:
+        edge_indexes.update(set(previous_edge_index))
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"predict maybe edge index: {edge_indexes}",
+                        zh=f"预测可能的边号下标: {edge_indexes}")
+        if edge_indexes:
             for edge in range(self.front_size):
-                if edge + 1 not in edge_indexs:
+                if edge + 1 not in edge_indexes:
                     kills.update(last_sequence[edge] + i for i in [-1, 1])
 
-        same_indexs = train_predict(sequences, self.calculate_same_number_index)
+        same_indexes = train_predict(sequences, self.calculate_same_number_index)
         previous_same_index = self.calculate_same_number_index(sequences[-2], last_sequence)
-        same_indexs.update(set(previous_same_index))
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"predict maybe same index: {same_indexs}",
-        #                 zh=f"预测可能的同号下标: {same_indexs}")
-        if same_indexs:
+        same_indexes.update(set(previous_same_index))
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"predict maybe same index: {same_indexes}",
+                        zh=f"预测可能的同号下标: {same_indexes}")
+        if same_indexes:
             for same in range(self.front_size):
-                if same + 1 not in same_indexs:
+                if same + 1 not in same_indexes:
                     kills.update({last_sequence[same]})
 
         return kills
 
     def calculate_back_kills(self, sequences: List[List[int]], next_weekday: int, show_details: str = None) -> Set[int]:
         """Helper function to calculate back kill numbers based on the last sequence."""
+
         def train_predict(chunk, func_name, chunk_size=1):
             train_data = [result
-                          for c, n in self.get_chunks_with_next(chunk, chunk_size)
+                          for c, n in self.generate_chunks_with_next(chunk, chunk_size)
                           for result in func_name(c[-1], n)]
             return (
                 {
@@ -837,10 +822,12 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             # (abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]]) + euclidean_distance) % self.back_vocab_size,
         }
         kills.update(zone_ratio_index_num_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"The difference between the sum of the filter zone ratio "
-        #                    f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, size: {len(zone_ratio_index_num_set)}",
-        #                 zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, 数量: {len(zone_ratio_index_num_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"The difference between the sum of the filter zone ratio "
+                           f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
+                           f"size: {len(zone_ratio_index_num_set)}",
+                        zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
+                           f"数量: {len(zone_ratio_index_num_set)}")
 
         zone_average_set = set()
         for zone in self.back_zone_ranges:
@@ -850,9 +837,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
             zone_average_set.add(self.real_round(sum(tmp) / len(tmp))) if len(tmp) > 0 else None
         kills.update(zone_average_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
-        #                 zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+                        zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
 
         sum_total = self.calculate_sum_total(last_sequence)
         sum_total_average_set = {
@@ -860,37 +847,39 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             self.real_round((min(last_sequence) + max(last_sequence)) / 2)
         }
         kills.update(sum_total_average_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"sum total average add: {sorted(sum_total_average_set)}, size: {len(sum_total_average_set)}",
-        #                 zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, 数量: {len(sum_total_average_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"sum total average add: {sorted(sum_total_average_set)}, "
+                           f"size: {len(sum_total_average_set)}",
+                        zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
+                           f"数量: {len(sum_total_average_set)}")
 
         span = self.calculate_span(last_sequence)
         span_set = {abs(last_sequence[0] - span), (last_sequence[-1] + span) % 35, span - next_weekday}
         kills.update(span_set)
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
-        #                 zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+                        zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
 
-        edge_indexs = train_predict(sequences, self.calculate_edge_number_index)
+        edge_indexes = train_predict(sequences, self.calculate_edge_number_index)
         # previous_edge_index = self.calculate_edge_number_index(sequences[-2], last_sequence)
-        # edge_indexs.update(set(previous_edge_index))
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"predict maybe edge indexs: {edge_indexs}",
-        #                 zh=f"预测可能的边号下标: {edge_indexs}")
-        if edge_indexs:
+        # edge_indexes.update(set(previous_edge_index))
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"predict maybe edge index: {edge_indexes}",
+                        zh=f"预测可能的边号下标: {edge_indexes}")
+        if edge_indexes:
             for edge in range(self.back_size):
-                if edge + 1 not in edge_indexs:
+                if edge + 1 not in edge_indexes:
                     kills.update(last_sequence[edge] + i for i in [-1, 1])
 
-        same_indexs = train_predict(sequences, self.calculate_same_number_index)
+        same_indexes = train_predict(sequences, self.calculate_same_number_index)
         # previous_same_index = self.calculate_same_number_index(sequences[-2], last_sequence)
-        # same_indexs.update(set(previous_same_index))
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"predict maybe same index: {same_indexs}",
-        #                 zh=f"预测可能的同号下标: {same_indexs}")
-        if same_indexs:
+        # same_indexes.update(set(previous_same_index))
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"predict maybe same index: {same_indexes}",
+                        zh=f"预测可能的同号下标: {same_indexes}")
+        if same_indexes:
             for same in range(self.back_size):
-                if same + 1 not in same_indexs:
+                if same + 1 not in same_indexes:
                     kills.update({last_sequence[same]})
 
         return kills
@@ -901,8 +890,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             next_period: int = None,
             next_weekday: int = None,
             show_details: str = None
-    ) -> Tuple[
-        Set[int], Set[int]]:
+    ) -> Tuple[Set[int], Set[int]]:
         """
         Calculate and return sets of 'banker numbers' for both front and back sequences based on provided data.
 
@@ -923,16 +911,16 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # Ensure front numbers are within the valid range
         front_banker_numbers = self.calculate_front_bankers(front_sequences, next_period, next_weekday)
         front_banker_numbers = {num for num in front_banker_numbers if 1 <= num <= self.front_vocab_size}
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"back banker numbers: {sorted(front_banker_numbers)}, size: {len(front_banker_numbers)}",
-        #                 zh=f"前区胆码: {sorted(front_banker_numbers)}, 数量: {len(front_banker_numbers)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"back banker numbers: {sorted(front_banker_numbers)}, size: {len(front_banker_numbers)}",
+                        zh=f"前区胆码: {sorted(front_banker_numbers)}, 数量: {len(front_banker_numbers)}")
 
         # Ensure back numbers are within the valid range
         back_backer_numbers = self.calculate_back_bankers(back_sequences, next_weekday)
         back_banker_numbers = {num for num in back_backer_numbers if 1 <= num <= self.back_vocab_size}
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"back banker numbers: {sorted(back_banker_numbers)}, size: {len(back_banker_numbers)}",
-        #                 zh=f"后区胆码: {sorted(back_banker_numbers)}, 数量: {len(back_banker_numbers)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"back banker numbers: {sorted(back_banker_numbers)}, size: {len(back_banker_numbers)}",
+                        zh=f"后区胆码: {sorted(back_banker_numbers)}, 数量: {len(back_banker_numbers)}")
 
         return front_banker_numbers, back_banker_numbers
 
@@ -947,7 +935,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         def train_predict(chunk, func_name, chunk_size=1):
             train_data = [result
-                          for c, n in self.get_chunks_with_next(chunk, chunk_size)
+                          for c, n in self.generate_chunks_with_next(chunk, chunk_size)
                           for result in func_name(c[-1], n)]
             return (
                 {self.exponential_moving_average_next_value(train_data),
@@ -962,9 +950,12 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                         en=f"predict maybe edge index: {edge_index}",
                         zh=f"预测可能的边号下标: {edge_index}")
         if edge_index:
-            bankers.update(sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(self.front_size) for i in [-1, 1])
+            bankers.update(
+                sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(self.front_size) for i in
+                [-1, 1])
         previous_edge_index = self.calculate_edge_number_index(sequences[-2], sequences[-1])
-        bankers.update(sequences[-1][edge - 1] + i for edge in previous_edge_index if edge - 1 in range(5) for i in [-1, 1])
+        bankers.update(
+            sequences[-1][edge - 1] + i for edge in previous_edge_index if edge - 1 in range(5) for i in [-1, 1])
 
         same_index = train_predict(sequences, self.calculate_same_number_index)
         if same_index:
@@ -1034,7 +1025,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             # Ensure that 'data' can be unpacked into the Lottery named tuple
             return self.Lottery(*data)
 
-    def calculate_front(self, data: Iterable[Any]) -> List[int]:
+    def calculate_front(self, data: Union[Iterable[Any] | namedtuple]) -> List[int]:
         """
         Calculate the 'front' portion of the data based on predefined size settings.
 
@@ -1066,7 +1057,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # If none of the above conditions are met, raise an IndexError.
         raise IndexError(f'length:{length} does not match any expected size')
 
-    def calculate_back(self, data: Iterable[Any]) -> List[int]:
+    def calculate_back(self, data: Union[Iterable[Any] | namedtuple]) -> List[int]:
         """
         Calculate the 'back' portion of the data based on predefined size settings.
 
@@ -1187,7 +1178,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         for feature, chunk_size in self.append_feature_mapping.items():
             compute_method: Callable = getattr(self, f'calculate_{feature}')
             params = add_append_params.get(feature)
-            for chunk, next_element in self.get_chunks_with_next(lottery_datas, chunk_size=chunk_size):
+            for chunk, next_element in self.generate_chunks_with_next(lottery_datas, chunk_size=chunk_size):
                 region_mapping = {
                     1: ([c.front for c in chunk] + [next_element.front], params[0] if params else None),
                     2: ([c.back for c in chunk] + [next_element.back], params[1] if params else None)
@@ -1376,6 +1367,66 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         return predict_data
 
+    def calculate_predictions_and_intervals(
+            self,
+            data: List[Union[float, int]],
+            sd_threshold: float,
+            rolling_size: int,
+            warm_start: bool = False,
+            random_state: int = 12,
+            param_distributions: Optional[Dict] = None,
+            param_overrides: Optional[Dict] = None
+    ) -> Tuple[Union[float, int], int, int]:
+        """
+        Calculate prediction intervals based on historical data and a specified rolling size.
+
+        Args:
+            data (List[float]): The list of historical data points.
+            sd_threshold (float): The threshold for standard deviation calculations.
+            rolling_size (int): The number of recent data points to consider for rolling calculations.
+            warm_start (bool, optional): Whether to use the previous model state for training. Defaults to False.
+            random_state (int, optional): A seed used by the random number generator for reproducibility. Defaults to 12.
+            param_distributions (Optional[Dict]): The distribution of parameters to try in randomized search.
+            param_overrides (Optional[Dict]): Additional parameters for the RandomizedSearchCV.
+
+        Returns:
+            Tuple[float, int, int]: A tuple containing the predicted value, and the minimum and maximum values of the prediction interval.
+        """
+        # Calculate standard deviation and tendency using a Welford's method based implementation
+        sd = self.calculate_standard_deviation_welford(data[-rolling_size:])
+        tendency = 0
+        rsi = self.relative_strength_index(data[-rolling_size:], period=rolling_size // 2)
+        if data[-1] >= math.floor(0.75 * sd_threshold) or rsi > 69:
+            tendency = -1
+        elif data[-1] <= math.ceil(0.12 * sd_threshold) or rsi < 31:
+            tendency = 1
+        param_overrides = param_overrides or {
+            'n_iter': 100,
+            'cv': 3,
+            'scoring': 'neg_mean_squared_error',
+            'verbose': 0,
+            'random_state': 12,
+            'n_jobs': -1
+        }
+        # Predict the next value using a random forest regressor
+        pred = self.random_forest_regressor_next_value(data, rolling_size=rolling_size,
+                                                       warm_start=warm_start,
+                                                       random_state=random_state,
+                                                       param_distributions=param_distributions,
+                                                       param_overrides=param_overrides)
+
+        # Set default interval values based on zero tendency
+        min_val = math.floor(pred - sd)
+        max_val = math.ceil(pred + sd)
+
+        # Adjust interval based on the tendency
+        if tendency < 0:
+            max_val = math.ceil(pred + sd)
+        elif tendency > 0:
+            min_val = math.floor(pred - sd)
+
+        return pred, min_val, max_val
+
     def model_predict(
             self,
             next_period: int = None,
@@ -1446,66 +1497,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             for data in predictions:
                 self.app_log.info(', '.join(map(str, data)))
         return predictions
-
-    def calculate_predictions_and_intervals(
-            self,
-            data: List[Union[float, int]],
-            sd_threshold: float,
-            rolling_size: int,
-            warm_start: bool = False,
-            random_state: int = 12,
-            param_distributions: Optional[Dict] = None,
-            param_overrides: Optional[Dict] = None
-    ) -> Tuple[Union[float, int], int, int]:
-        """
-        Calculate prediction intervals based on historical data and a specified rolling size.
-
-        Args:
-            data (List[float]): The list of historical data points.
-            sd_threshold (float): The threshold for standard deviation calculations.
-            rolling_size (int): The number of recent data points to consider for rolling calculations.
-            warm_start (bool, optional): Whether to use the previous model state for training. Defaults to False.
-            random_state (int, optional): A seed used by the random number generator for reproducibility. Defaults to 12.
-            param_distributions (Optional[Dict]): The distribution of parameters to try in randomized search.
-            param_overrides (Optional[Dict]): Additional parameters for the RandomizedSearchCV.
-
-        Returns:
-            Tuple[float, int, int]: A tuple containing the predicted value, and the minimum and maximum values of the prediction interval.
-        """
-        # Calculate standard deviation and tendency using a Welford's method based implementation
-        sd = self.calculate_standard_deviation_welford(data[-rolling_size:])
-        tendency = 0
-        rsi = self.relative_strength_index(data[-rolling_size:], period=rolling_size // 2)
-        if data[-1] >= math.floor(0.75 * sd_threshold) or rsi > 69:
-            tendency = -1
-        elif data[-1] <= math.ceil(0.12 * sd_threshold) or rsi < 31:
-            tendency = 1
-        param_overrides = param_overrides or {
-            'n_iter': 100,
-            'cv': 3,
-            'scoring': 'neg_mean_squared_error',
-            'verbose': 0,
-            'random_state': 12,
-            'n_jobs': -1
-        }
-        # Predict the next value using a random forest regressor
-        pred = self.random_forest_regressor_next_value(data, rolling_size=rolling_size,
-                                                       warm_start=warm_start,
-                                                       random_state=random_state,
-                                                       param_distributions=param_distributions,
-                                                       param_overrides=param_overrides)
-
-        # Set default interval values based on zero tendency
-        min_val = math.floor(pred - sd)
-        max_val = math.ceil(pred + sd)
-
-        # Adjust interval based on the tendency
-        if tendency < 0:
-            max_val = math.ceil(pred + sd)
-        elif tendency > 0:
-            min_val = math.floor(pred - sd)
-
-        return pred, min_val, max_val
 
     def analyze_predict(
             self,
@@ -1657,8 +1648,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
             # for data in predictions:
             #     self.app_log.info(', '.join(map(str, data)))
-            self.print_matrix([self.calculate_front(history_data[-1])] + [list(front_kill_numbers)] + predict_data_front,
-                              self.front_vocab_size)
+            self.print_matrix(
+                [self.calculate_front(history_data[-1])] + [list(front_kill_numbers)] + predict_data_front,
+                self.front_vocab_size)
             self.print_matrix([self.calculate_back(history_data[-1])] + [list(back_kill_numbers)] + predict_data_back,
                               self.back_vocab_size)
         return []
@@ -1707,3 +1699,93 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
     def test(self):
         pass
+
+
+class Evaluation(Daletou):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def get_data(self, data_type: str = None):
+        data_type_mapping = {
+            'history': self.get_previous_history_data,
+            'period': self.get_previous_period_data,
+            'weekday': self.get_previous_weekday_data,
+        }
+        return data_type_mapping.get(data_type)()
+
+    def evaluate_model(
+            self,
+            data=None,
+            data_type: str = None,
+            rolling_size=15,
+            model_functions: list = None
+    ):
+        if data is None:
+            data = self.get_data(data_type=data_type)
+
+        if model_functions is None:
+            model_functions = [
+                self.exponential_moving_average_next_value,
+                self.linear_regression_next_value_by_index,
+                self.random_forest_regressor_next_value_by_index,
+            ]
+
+        total, count = 0, 0
+        for chunks, next_value in self.generate_chunks_with_next(data, chunk_size=rolling_size):
+            chunks_data = [self.convert_lottery_data(d) for d in chunks]
+            matrix = [d.front + d.back for d in chunks_data]
+            matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
+            predictions = [tuple(predictor(seq) for seq in matrix_flip) for predictor in model_functions]
+            maybe_combinations = [
+                self.Lottery('', '', '', self.calculate_front(d), self.calculate_back(d))
+                for d in predictions
+            ]
+            predict_data = [mc.front + mc.back for mc in maybe_combinations]
+            award_amount, award_count = self.calculate_winning_amount(next_value, predict_data)
+            print(f"award amount {award_amount} / {award_count}")
+            if award_amount > 0 and award_count > 0:
+                count += 1
+            total += 1
+            print(f"{count}/{total}")
+        print(f"{count}/{total}")
+
+    def evaluate_model_predict(self, data=None, rolling_size=15, show_details: str = None):
+        data = self.get_previous_history_data() if data is None else data
+        total, count = 0, 0
+        for chunks, next_value in self.generate_chunks_with_next(data, chunk_size=rolling_size):
+            next_period = self.get_next_period(next_value[1])
+            next_weekday = self.get_next_weekday(next_value[1])
+            predict_data = self.model_predict(
+                next_period=next_period,
+                next_weekday=next_weekday,
+                show_details=show_details,
+                window_size=rolling_size
+            )
+            award_amount, award_count = self.calculate_winning_amount(next_value, predict_data)
+            print(f"award amount {award_amount} / {award_count}")
+            if award_amount > 0 and award_count > 0:
+                count += 1
+            total += 1
+            print(f"{count}/{total}")
+        print(f"{count}/{total}")
+
+    def evaluate_analyze_predict(self, data=None, rolling_size=15, show_details: str = None):
+        data = self.get_previous_history_data() if data is None else data
+
+        total, count = 0, 0
+        for chunks, next_value in self.generate_chunks_with_next(data, chunk_size=rolling_size):
+            next_period = self.get_next_period(next_value[1])
+            next_weekday = self.get_next_weekday(next_value[1])
+            predict_data = self.analyze_predict(
+                next_period=next_period,
+                next_weekday=next_weekday,
+                show_details=show_details,
+                window_size=rolling_size
+            )
+            award_amount, award_count = self.calculate_winning_amount(next_value, predict_data)
+            print(f"award amount {award_amount} / {award_count}")
+            if award_amount > 0 and award_count > 0:
+                count += 1
+            total += 1
+            print(f"{count}/{total}")
+        print(f"{count}/{total}")
