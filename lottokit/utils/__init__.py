@@ -10,14 +10,12 @@
 @SoftWare: PyCharm
 """
 
-from analyze_util import AnalyzeUtil
-from calculate_util import CalculateUtil
-from denoiser_util import DenoiserUtil
-from genetics_util import GeneticsUtil
-from io_util import IOUtil
-from model_util import ModelUtil
-from spider_util import SpiderUtil
-from transformer_util import RandomForestRegressorTransformer
+from .analyze_util import AnalyzeUtil
+from .calculate_util import CalculateUtil
+from .denoiser_util import DenoiserUtil
+from .genetics_util import GeneticsUtil
+from .io_util import IOUtil
+from .model_util import ModelUtil
+from .spider_util import SpiderUtil
 
-__all__ = ['AnalyzeUtil', 'CalculateUtil', 'DenoiserUtil', 'GeneticsUtil', 'IOUtil', 'ModelUtil', 'SpiderUtil',
-           'RandomForestRegressorTransformer', ]
+__all__ = ['AnalyzeUtil', 'CalculateUtil', 'DenoiserUtil', 'GeneticsUtil', 'IOUtil', 'ModelUtil', 'SpiderUtil',]

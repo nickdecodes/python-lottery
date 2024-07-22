@@ -1718,7 +1718,8 @@ class Evaluation(Daletou):
             data=None,
             data_type: str = None,
             rolling_size=15,
-            model_functions: list = None
+            model_functions: list = None,
+            show_details: str = None,
     ):
         if data is None:
             data = self.get_data(data_type=data_type)
@@ -1733,6 +1734,7 @@ class Evaluation(Daletou):
         total, count = 0, 0
         for chunks, next_value in self.generate_chunks_with_next(data, chunk_size=rolling_size):
             chunks_data = [self.convert_lottery_data(d) for d in chunks]
+            next_data = self.convert_lottery_data(next_value)
             matrix = [d.front + d.back for d in chunks_data]
             matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
             predictions = [tuple(predictor(seq) for seq in matrix_flip) for predictor in model_functions]
@@ -1741,11 +1743,12 @@ class Evaluation(Daletou):
                 for d in predictions
             ]
             predict_data = [mc.front + mc.back for mc in maybe_combinations]
-            award_amount, award_count = self.calculate_winning_amount(next_value, predict_data)
+            award_amount, award_count = self.calculate_winning_amount(next_data, predict_data)
             print(f"award amount {award_amount} / {award_count}")
             if award_amount > 0 and award_count > 0:
                 count += 1
             total += 1
+            print(predict_data, next_data.front + next_data.back) if show_details is not None else None
             print(f"{count}/{total}")
         print(f"{count}/{total}")
 
@@ -1753,8 +1756,9 @@ class Evaluation(Daletou):
         data = self.get_previous_history_data() if data is None else data
         total, count = 0, 0
         for chunks, next_value in self.generate_chunks_with_next(data, chunk_size=rolling_size):
-            next_period = self.get_next_period(next_value[1])
-            next_weekday = self.get_next_weekday(next_value[1])
+            next_data = self.convert_lottery_data(next_value)
+            next_period = self.get_next_period(next_data.date)
+            next_weekday = self.get_next_weekday(next_data.date)
             predict_data = self.model_predict(
                 next_period=next_period,
                 next_weekday=next_weekday,
@@ -1766,6 +1770,7 @@ class Evaluation(Daletou):
             if award_amount > 0 and award_count > 0:
                 count += 1
             total += 1
+            print(predict_data, next_data.front + next_data.back) if show_details is not None else None
             print(f"{count}/{total}")
         print(f"{count}/{total}")
 
@@ -1774,8 +1779,9 @@ class Evaluation(Daletou):
 
         total, count = 0, 0
         for chunks, next_value in self.generate_chunks_with_next(data, chunk_size=rolling_size):
-            next_period = self.get_next_period(next_value[1])
-            next_weekday = self.get_next_weekday(next_value[1])
+            next_data = self.convert_lottery_data(next_value)
+            next_period = self.get_next_period(next_data.date)
+            next_weekday = self.get_next_weekday(next_data.date)
             predict_data = self.analyze_predict(
                 next_period=next_period,
                 next_weekday=next_weekday,
@@ -1787,5 +1793,6 @@ class Evaluation(Daletou):
             if award_amount > 0 and award_count > 0:
                 count += 1
             total += 1
+            print(predict_data, next_data.front + next_data.back) if show_details is not None else None
             print(f"{count}/{total}")
         print(f"{count}/{total}")

@@ -9,6 +9,7 @@
 @DateTime: 2024/7/22 10:06
 @SoftWare: PyCharm
 """
+import math
 
 import numpy as np
 import pandas as pd
@@ -20,9 +21,62 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.model_selection import RandomizedSearchCV
+from sklearn.base import BaseEstimator, TransformerMixin
 from typing import List, Optional, Dict
 from .calculate_util import CalculateUtil
-from .transformer_util import RandomForestRegressorTransformer
+
+
+class CustomTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, model: RandomForestRegressor):
+        """
+        Initialize the transformer with a RandomForestRegressor model and a StandardScaler for feature scaling.
+
+        Parameters:
+        model (RandomForestRegressor): The RandomForestRegressor model to be used for predictions.
+        """
+        self.calculate_util = CalculateUtil()
+        self.model_util = ModelUtil()
+        self.model = model
+        self.scaler = StandardScaler()
+
+    def fit(self, X: np.ndarray, y: Optional[np.ndarray] = None) -> 'CustomTransformer':
+        """
+        Fit the RandomForest model and the scaler on the training data.
+
+        Parameters:
+        X (np.ndarray): Training data features.
+        y (Optional[np.ndarray]): Training data labels.
+
+        Returns:
+        RandomForestRegressorTransformer: The instance of this transformer.
+        """
+        X_scaled = self.scaler.fit_transform(X)
+        self.model.fit(X_scaled, y)
+        return self
+
+    def transform(self, X: np.ndarray) -> np.ndarray:
+        """
+        Transform the input data by scaling, making predictions, and calculating per-row statistics.
+
+        Parameters:
+        X (np.ndarray): Data to transform.
+
+        Returns:
+        np.ndarray: Transformed data including last elements, predictions, standard deviations, and RSI values.
+        """
+        X_scaled = self.scaler.transform(X)
+        predictions = self.model.predict(X_scaled)
+
+        # Calculate standard deviation and RSI for each row
+        sd_per_row = np.array([self.calculate_util.calculate_standard_deviation_welford(row) for row in X])
+        rsi_per_row = np.array([self.model_util.relative_strength_index(row, period=len(row) // 2) for row in X])
+
+        # Extract the last element from each row
+        last_elements = X[:, -1]
+
+        # Combine all the computed features into a single array
+        transformed_data = np.c_[last_elements, predictions, sd_per_row, rsi_per_row]
+        return transformed_data
 
 
 class ModelUtil:
@@ -67,8 +121,14 @@ class ModelUtil:
             # If there's no enough data to calculate difference, use the last EMA as the prediction
             predicted_next_value = ema.iloc[-1]
 
+        rsi = ModelUtil.relative_strength_index(numeric_sequence, period=len(numeric_sequence))
         # Return the predicted next value rounded to the nearest integer
-        return CalculateUtil.real_round(predicted_next_value)
+        if rsi <= 50:
+            return math.ceil(predicted_next_value)
+        # elif rsi in range(50, 70):
+        #     return CalculateUtil.real_round(predicted_next_value)
+        else:
+            return math.floor(predicted_next_value)
 
     @staticmethod
     def linear_regression_next_value_by_index(numeric_sequence: List[int]) -> int:
@@ -230,7 +290,7 @@ class ModelUtil:
                                           **random_search.best_params_)
 
         model_pipline = Pipeline([
-            ('prediction_transformer', RandomForestRegressorTransformer(model)),
+            ('prediction_transformer', CustomTransformer(model)),
             ('prediction_transformer_two', RandomForestRegressor(warm_start=warm_start, random_state=random_state)),
             # ('poly_features', PolynomialFeatures(degree=2)),
             # ('linear_regression', LinearRegression())

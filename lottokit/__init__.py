@@ -10,9 +10,8 @@
 @SoftWare: 
 """
 
-from .utils import (AnalyzeUtil, CalculateUtil, DenoiserUtil, GeneticsUtil, IOUtil, ModelUtil, SpiderUtil,
-                    RandomForestRegressorTransformer)
+from .utils import AnalyzeUtil, CalculateUtil, DenoiserUtil, GeneticsUtil, IOUtil, ModelUtil, SpiderUtil
 from .daletou import Daletou
 
 __all__ = ['AnalyzeUtil', 'CalculateUtil', 'DenoiserUtil', 'GeneticsUtil', 'IOUtil', 'ModelUtil', 'SpiderUtil',
-           'RandomForestRegressorTransformer', 'Daletou', ]
+           'Daletou', ]
