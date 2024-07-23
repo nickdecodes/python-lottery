@@ -131,7 +131,7 @@ class ModelUtil:
             return math.floor(predicted_next_value)
 
     @staticmethod
-    def linear_regression_next_value_by_index(numeric_sequence: List[int]) -> int:
+    def linear_regression_next_value(numeric_sequence: List[int]) -> int:
         """
         Predicts the next value in a sequence using linear regression.
 
@@ -218,7 +218,7 @@ class ModelUtil:
         return pred_y[0]
 
     @staticmethod
-    def harmonic_regression_next_value_by_index(numeric_sequence: List[int], frequency: float = 1.0) -> int:
+    def harmonic_regression_next_value(numeric_sequence: List[int], frequency: float = 1.0) -> int:
         """
         Predicts the next value in a sequence using harmonic regression.
 
@@ -230,33 +230,31 @@ class ModelUtil:
         :param frequency: The frequency of the periodic component to model.
         :return: The predicted next value in the sequence as an integer.
         """
-        # Convert the numeric sequence into a numpy array
-        data = np.array(numeric_sequence).reshape(-1, 1)
+        # Create feature matrix X and target vector y
+        X = np.array(numeric_sequence[:-1]).reshape(-1, 1)  # All elements except the last one
+        y = np.array(numeric_sequence[1:])  # All elements except the first one
 
-        # Create an array representing time or the independent variable
-        index = np.array(range(len(data))).reshape(-1, 1)
+        # Generate sine and cosine features based on X and given frequency
+        sine_feature = np.sin(2 * np.pi * frequency * X)
+        cosine_feature = np.cos(2 * np.pi * frequency * X)
 
-        # Generate sine and cosine features based on the time array and given frequency
-        sine_feature = np.sin(2 * np.pi * frequency * index)
-        cosine_feature = np.cos(2 * np.pi * frequency * index)
-
-        # Combine sine and cosine features into a single feature matrix
-        features = np.hstack((sine_feature, cosine_feature))
+        # Combine original features with sine and cosine features into a single feature matrix
+        features = np.hstack((X, sine_feature, cosine_feature))
 
         # Create a LinearRegression model and fit it to the data with harmonic features
         model = LinearRegression()
-        model.fit(features, data)
+        model.fit(features, y)
 
-        # Predict the next value in the sequence using the fitted model
-        next_time_point = np.array([[len(data)]])
-        next_sine_feature = np.sin(2 * np.pi * frequency * next_time_point)
-        next_cosine_feature = np.cos(2 * np.pi * frequency * next_time_point)
-        next_features = np.hstack((next_sine_feature, next_cosine_feature))
+        # Predict the next value in the sequence using the last element of numeric_sequence as input
+        next_value = np.array([[numeric_sequence[-1]]])
+        next_sine_feature = np.sin(2 * np.pi * frequency * next_value)
+        next_cosine_feature = np.cos(2 * np.pi * frequency * next_value)
+        next_features = np.hstack((next_value, next_sine_feature, next_cosine_feature))
 
-        prediction = model.predict(next_features)[0][0]
+        next_value = model.predict(next_features)[0]
 
         # Return the predicted value as an integer
-        return CalculateUtil.real_round(prediction)
+        return CalculateUtil.real_round(next_value)
 
     @staticmethod
     def random_forest_regressor_transformer(
@@ -306,88 +304,7 @@ class ModelUtil:
         return pred_y
 
     @staticmethod
-    def random_forest_regressor_next_value(
-            numeric_sequence: List[int],
-            rolling_size: int,
-            warm_start: bool = False,
-            random_state: int = 12,
-            param_distributions: Optional[Dict] = None,
-            param_overrides: Optional[Dict] = None
-    ) -> float:
-        """
-        Predicts the next value in a numeric sequence using a Random Forest Regressor model.
-
-        This method uses a Random Forest Regressor to predict the next value in a sequence based on
-        the values in a rolling window. The sequence is first transformed into a dataset suitable for
-        regression by creating overlapping windows of specified size.
-
-        Args:
-            numeric_sequence (List[int]): The list of integers representing the sequence.
-            rolling_size (int): The number of elements in each rolling window.
-            warm_start (bool): Whether to reuse the solution of the previous call to fit and add more estimators to the ensemble.
-            random_state (int): Controls both the randomness of the bootstrapping of the samples used when building trees
-                                (if `bootstrap=True`) and the sampling of the features to consider when looking for the best split at each node.
-            param_distributions (Optional[Dict]): The distribution of parameters to try in randomized search.
-                                                eg: {
-                                                    'n_estimators': stats.randint(100, 500),
-                                                    'max_depth': [None, ] + [i for i in range(10, 100)],
-                                                    'max_features': ['sqrt', 'log2'],
-                                                    'min_samples_split': stats.randint(2, 80),
-                                                    'min_samples_leaf': stats.randint(1, 40)
-                                                }
-            param_overrides (Optional[Dict]): Additional parameters for the RandomizedSearchCV.
-                                                eg: {
-                                                    'n_iter': 100,
-                                                    'cv': 3,
-                                                    'scoring': 'neg_mean_squared_error',
-                                                    'verbose': 0,
-                                                    'random_state': 12,
-                                                    'n_jobs': -1
-                                                }
-
-        Returns:
-            float: The predicted next value in the sequence.
-
-        Raises:
-            ValueError: If the rolling_size is larger than the size of numeric_sequence.
-        """
-        if rolling_size > len(numeric_sequence):
-            raise ValueError("rolling_size cannot be larger than the size of numeric_sequence")
-
-        # Generate datasets with the specified rolling size
-        train_x, train_y = CalculateUtil.generate_datasets_with_rolling_size(
-            data=numeric_sequence, rolling_size=rolling_size
-        )
-
-        # Convert lists to numpy arrays for compatibility with scikit-learn
-        input_x = np.array(train_x)
-        output_y = np.array(train_y)
-
-        # Scale the features to normalize data
-        scaler = StandardScaler()
-        input_x_scaled = scaler.fit_transform(input_x)
-
-        # Initialize and train the Random Forest Regressor
-        model = RandomForestRegressor(warm_start=warm_start, random_state=random_state)
-        if param_distributions:
-            param_overrides = param_overrides or {}
-            random_search = RandomizedSearchCV(estimator=model, param_distributions=param_distributions,
-                                               **param_overrides)
-            random_search.fit(input_x_scaled, output_y)
-            model = RandomForestRegressor(warm_start=warm_start, random_state=random_state,
-                                          **random_search.best_params_)
-        model.fit(input_x_scaled, output_y)
-
-        # Prepare the last rolling window of data for prediction
-        test_x = np.array([numeric_sequence[-rolling_size:]])
-        test_x_scaled = scaler.transform(test_x)
-
-        # Predicting the next value
-        pred_y = model.predict(test_x_scaled)
-        return pred_y[0]
-
-    @staticmethod
-    def random_forest_regressor_next_value_by_index(numeric_sequence: List[int]) -> int:
+    def random_forest_regressor_next_value(numeric_sequence: List[int]) -> int:
         """
         Predicts the next value in a sequence using a Random Forest Regressor.
 

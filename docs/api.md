@@ -257,7 +257,7 @@ ema_value = ModelUtil.exponential_moving_average_next_value([10, 15, 20, 25, 30]
 print(f"The EMA value is: {ema_value}")
 ```
 
-### Method: linear_regression_next_value_by_index
+### Method: linear_regression_next_value
 
 Predicts the next value in a sequence using linear regression.
 
@@ -273,7 +273,7 @@ This method uses linear regression to predict the next value in a given sequence
 #### Example Usage:
 ```python
 # Predict the next value in a sequence using linear regression
-next_value = ModelUtil.linear_regression_next_value_by_index([10, 15, 20, 25, 30])
+next_value = ModelUtil.linear_regression_next_value([10, 15, 20, 25, 30])
 print(f"The predicted next value is: {next_value}")
 ```
 
@@ -303,7 +303,7 @@ next_value = ModelUtil.multivariate_polynomial_regression_next_value([10, 15, 20
 print(f"The predicted next value is: {next_value}")
 ```
 
-### Method: harmonic_regression_next_value_by_index
+### Method: harmonic_regression_next_value
 
 Predicts the next value in a sequence using harmonic regression.
 
@@ -320,52 +320,11 @@ This method predicts the next value in a given sequence of numbers by fitting a 
 #### Example Usage:
 ```python
 # Predict the next value in a sequence using harmonic regression
-next_value = ModelUtil.harmonic_regression_next_value_by_index([10, 15, 20, 25, 30], frequency=0.5)
+next_value = ModelUtil.harmonic_regression_next_value([10, 15, 20, 25, 30], frequency=0.5)
 print(f"The predicted next value is: {next_value}")
 ```
 
 ### Method: random_forest_regressor_next_value
-
-Predicts the next value in a numeric sequence using a Random Forest Regressor model.
-
-#### Parameters:
-- `numeric_sequence (List[int]):` The list of integers representing the sequence.
-- `rolling_size (int):` The number of elements in each rolling window.
-- `warm_start (bool):` Whether to reuse the solution of the previous call to fit and add more estimators to the ensemble.
-- `random_state (int):` Controls both the randomness of the bootstrapping of the samples used when building trees
-                                    (if `bootstrap=True`) and the sampling of the features to consider when looking for the best split at each node.
--  `param_distributions (Optional[Dict]):` The distribution of parameters to try in randomized search.
-                                                    eg: {
-                                                        'n_estimators': stats.randint(100, 500),
-                                                        'max_depth': [None, ] + [i for i in range(10, 100)],
-                                                        'max_features': ['sqrt', 'log2'],
-                                                        'min_samples_split': stats.randint(2, 80),
-                                                        'min_samples_leaf': stats.randint(1, 40)
-                                                    }
-- `param_overrides (Optional[Dict]):` Additional parameters for the RandomizedSearchCV.
-                                                    eg: {
-                                                        'n_iter': 100,
-                                                        'cv': 3,
-                                                        'scoring': 'neg_mean_squared_error',
-                                                        'verbose': 0,
-                                                        'random_state': 12,
-                                                        'n_jobs': -1
-                                                    }
-
-#### Returns:
-- `float:` The predicted next value in the sequence.
-
-#### Description:
-This method uses a Random Forest Regressor to predict the next value in a sequence based on the values in a rolling window. The sequence is first transformed into a dataset suitable for regression by creating overlapping windows of specified size.
-
-#### Example Usage:
-```python
-# Predict the next value in a sequence using a Random Forest Regressor
-next_value = ModelUtil.random_forest_regressor_next_value([10, 15, 20, 25, 30], rolling_size=3)
-print(f"The predicted next value is: {next_value}")
-```
-
-### Method: random_forest_regressor_next_value_by_index
 
 Predicts the next value in a sequence using a Random Forest Regressor.
 
@@ -381,7 +340,7 @@ This method predicts the next value in a given sequence of numbers using a Rando
 #### Example Usage:
 ```python
 # Predict the next value in a sequence using a Random Forest Regressor
-next_value = ModelUtil.random_forest_regressor([10, 15, 20, 25, 30])
+next_value = ModelUtil.random_forest_regressor_next_value([10, 15, 20, 25, 30])
 print(f"The predicted next value is: {next_value}")
 ```
 

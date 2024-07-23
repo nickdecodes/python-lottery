@@ -668,22 +668,24 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         # self.detail_log(app_log=self.app_log, show_details=show_details,
         #                 en=f"last award front data: {sorted(front_sequences[-1])}",
         #                 zh=f"最近一期中奖前区: {sorted(front_sequences[-1])}")
+        self.detail_log(app_log=self.app_log, show_details=show_details, en="front", zh="前区")
         front_kill_numbers = self.calculate_front_kills(front_sequences, next_period, next_weekday,
                                                         show_details=show_details)
         front_kill_numbers = {num for num in front_kill_numbers if 1 <= num <= self.front_vocab_size}
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"front kill numbers: {sorted(front_kill_numbers)}, size: {len(front_kill_numbers)}",
-        #                 zh=f"前区杀码: {sorted(front_kill_numbers)}, 数量: {len(front_kill_numbers)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"front kill numbers: {sorted(front_kill_numbers)}, size: {len(front_kill_numbers)}",
+                        zh=f"前区杀码: {sorted(front_kill_numbers)}, 数量: {len(front_kill_numbers)}")
 
         # Ensure numbers are within the valid range
         # self.detail_log(app_log=self.app_log, show_details=show_details,
         #                 en=f"last award back data: {sorted(back_sequences[-1])}",
         #                 zh=f"最近一期中奖后区: {sorted(back_sequences[-1])}")
+        self.detail_log(app_log=self.app_log, show_details=show_details, en="back", zh="后区")
         back_kill_numbers = self.calculate_back_kills(back_sequences, next_weekday, show_details=show_details)
         back_kill_numbers = {num for num in back_kill_numbers if 1 <= num <= self.back_vocab_size}
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"back kill numbers: {sorted(back_kill_numbers)}, size: {len(back_kill_numbers)}",
-        #                 zh=f"后区杀码: {sorted(back_kill_numbers)}, 数量: {len(back_kill_numbers)}")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"back kill numbers: {sorted(back_kill_numbers)}, size: {len(back_kill_numbers)}",
+                        zh=f"后区杀码: {sorted(back_kill_numbers)}, 数量: {len(back_kill_numbers)}")
 
         return front_kill_numbers, back_kill_numbers
 
@@ -703,93 +705,95 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             return (
                 {
                     self.exponential_moving_average_next_value(train_data),
-                    self.linear_regression_next_value_by_index(train_data),
-                    self.harmonic_regression_next_value_by_index(train_data)
+                    self.linear_regression_next_value(train_data),
+                    self.harmonic_regression_next_value(train_data)
                 }
                 if len(train_data) > 2 else {}
             )
 
+        def update_zone_ratio_index_num_set_to_kills():
+            odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
+            zone_ratio = self.calculate_zone_ratio(last_sequence, self.front_zone_ranges)
+            zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
+                                max((n - 1 if n != 0 else n) for n in zone_ratio)]
+            euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
+                                                                   (odd_even_ratio[0], odd_even_ratio[-1]))
+            indices = [zone_ratio_index[0], zone_ratio_index[-1]]
+            reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
+            sub_indices_0_1 = abs(last_sequence[indices[0]] - last_sequence[indices[1]])
+            add_indices_0_1 = abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance
+            sub_re_indices_0_1 = abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]])
+            add_re_indices_0_1 = abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]])
+            zone_ratio_index_num_set = {
+                self.real_round(sub_indices_0_1),
+                # add_indices_0_1 + euclidean_distance % self.front_vocab_size,
+                # self.real_round(sub_re_indices_0_1 + euclidean_distance),
+                self.real_round((add_re_indices_0_1 + euclidean_distance) / next_weekday) % self.front_vocab_size,
+            }
+            kills.update(zone_ratio_index_num_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"The difference between the sum of the filter zone ratio "
+                               f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
+                               f"size: {len(zone_ratio_index_num_set)}",
+                            zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
+                               f"数量: {len(zone_ratio_index_num_set)}")
+
+        def update_zone_average_set_to_kills():
+            zone_average_set = set()
+            for zone in self.front_zone_ranges:
+                tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
+                if len(tmp) == 1:
+                    unique_index = last_sequence.index(tmp[0])
+                    tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
+                zone_average_set.add(
+                    self.real_round(sum(tmp) / next_weekday + len(tmp)) % self.front_vocab_size
+                ) if len(tmp) > 0 else None
+            kills.update(zone_average_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+                            zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
+
+        def update_sum_total_average_set_to_kills():
+            sum_total = self.calculate_sum_total(last_sequence)
+            sum_total_average_set = {
+                self.real_round(sum_total / next_weekday) % self.front_vocab_size,  # 0.91
+                self.real_round((min(last_sequence) + max(last_sequence)) / next_weekday) % self.front_vocab_size,  # 0.90
+            }
+            kills.update(sum_total_average_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"sum total average add: {sorted(sum_total_average_set)}, "
+                               f"size: {len(sum_total_average_set)}",
+                            zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
+                               f"数量: {len(sum_total_average_set)}")
+
+        def update_span_set_to_kills():
+            span = self.calculate_span(last_sequence)
+            span_set = {
+                abs(last_sequence[next_weekday % self.front_size] - span),  # 0.90
+                (last_sequence[next_weekday % self.front_size] + span) % self.front_vocab_size,  # 0.90
+                # span - next_weekday,
+            }
+            kills.update(span_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+                            zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
         kills = set()
         last_sequence = sequences[-1]
-        odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
-        zone_ratio = self.calculate_zone_ratio(last_sequence, self.front_zone_ranges)
-        zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
-                            max((n - 1 if n != 0 else n) for n in zone_ratio)]
-        euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
-                                                               (odd_even_ratio[0], odd_even_ratio[-1]))
-        indices = [zone_ratio_index[0], zone_ratio_index[-1]]
-        reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
-        zone_ratio_index_num_set = {
-            abs(last_sequence[indices[0]] - last_sequence[indices[1]]) + euclidean_distance,
-            (abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance) % self.front_vocab_size,
-            abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]]) + euclidean_distance,
-            (abs(last_sequence[reverse_indices[0]] + last_sequence[
-                reverse_indices[1]]) + euclidean_distance) % self.front_vocab_size,
-        }
-        kills.update(zone_ratio_index_num_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"The difference between the sum of the filter zone ratio "
-                           f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
-                           f"size: {len(zone_ratio_index_num_set)}",
-                        zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
-                           f"数量: {len(zone_ratio_index_num_set)}")
 
-        zone_average_set = set()
-        for zone in self.front_zone_ranges:
-            tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
-            if len(tmp) == 1:
-                unique_index = last_sequence.index(tmp[0])
-                tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
-            zone_average_set.add(self.real_round(sum(tmp) / len(tmp))) if len(tmp) > 0 else None
-        kills.update(zone_average_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
-                        zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
-
-        sum_total = self.calculate_sum_total(last_sequence)
-        sum_total_average_set = {
-            self.real_round(sum_total / self.front_size),
-            self.real_round((min(last_sequence) + max(last_sequence)) / 2)
-        }
-        kills.update(sum_total_average_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"sum total average add: {sorted(sum_total_average_set)}, "
-                           f"size: {len(sum_total_average_set)}",
-                        zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
-                           f"数量: {len(sum_total_average_set)}")
-
-        span = self.calculate_span(last_sequence)
-        span_set = {abs(last_sequence[0] - span), (last_sequence[-1] + span) % 35, span - next_weekday}
-        kills.update(span_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
-                        zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
-
-        edge_indexes = train_predict(sequences, self.calculate_edge_number_index)
-        previous_edge_index = self.calculate_edge_number_index(sequences[-2], last_sequence)
-        edge_indexes.update(set(previous_edge_index))
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"predict maybe edge index: {edge_indexes}",
-                        zh=f"预测可能的边号下标: {edge_indexes}")
-        if edge_indexes:
-            for edge in range(self.front_size):
-                if edge + 1 not in edge_indexes:
-                    kills.update(last_sequence[edge] + i for i in [-1, 1])
-
-        same_indexes = train_predict(sequences, self.calculate_same_number_index)
-        previous_same_index = self.calculate_same_number_index(sequences[-2], last_sequence)
-        same_indexes.update(set(previous_same_index))
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"predict maybe same index: {same_indexes}",
-                        zh=f"预测可能的同号下标: {same_indexes}")
-        if same_indexes:
-            for same in range(self.front_size):
-                if same + 1 not in same_indexes:
-                    kills.update({last_sequence[same]})
+        update_zone_ratio_index_num_set_to_kills()
+        update_zone_average_set_to_kills()
+        update_sum_total_average_set_to_kills()
+        update_span_set_to_kills()
 
         return kills
 
-    def calculate_back_kills(self, sequences: List[List[int]], next_weekday: int, show_details: str = None) -> Set[int]:
+    def calculate_back_kills(
+            self,
+            sequences: List[List[int]],
+            next_weekday: int,
+            show_details: str = None
+    ) -> Set[int]:
         """Helper function to calculate back kill numbers based on the last sequence."""
 
         def train_predict(chunk, func_name, chunk_size=1):
@@ -799,88 +803,86 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             return (
                 {
                     self.exponential_moving_average_next_value(train_data),
-                    self.linear_regression_next_value_by_index(train_data),
-                    self.harmonic_regression_next_value_by_index(train_data)
+                    self.linear_regression_next_value(train_data),
+                    self.harmonic_regression_next_value(train_data)
                 }
                 if len(train_data) > 2 else {}
             )
 
+        def update_zone_ratio_index_num_set_to_kills():
+            odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
+            zone_ratio = self.calculate_zone_ratio(last_sequence, self.back_zone_ranges)
+            zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
+                                max((n - 1 if n != 0 else n) for n in zone_ratio)]
+            euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
+                                                                   (odd_even_ratio[0], odd_even_ratio[-1]))
+            indices = [zone_ratio_index[0], zone_ratio_index[-1]]
+            reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
+            sub_indices_0_1 = abs(last_sequence[indices[0]] - last_sequence[indices[1]])
+            add_indices_0_1 = abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance
+            sub_re_indices_0_1 = abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]])
+            add_re_indices_0_1 = abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]])
+            zone_ratio_index_num_set = {
+                # self.real_round(sub_indices_0_1),
+                # add_indices_0_1 + euclidean_distance % self.front_vocab_size,
+                # self.real_round(sub_re_indices_0_1 + euclidean_distance),
+                self.real_round(add_re_indices_0_1) % self.back_vocab_size,
+            }
+            kills.update(zone_ratio_index_num_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"The difference between the sum of the filter zone ratio "
+                               f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
+                               f"size: {len(zone_ratio_index_num_set)}",
+                            zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
+                               f"数量: {len(zone_ratio_index_num_set)}")
+
+        def update_zone_average_set_to_kills():
+            zone_average_set = set()
+            for zone in self.back_zone_ranges:
+                tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
+                if len(tmp) == 1:
+                    unique_index = last_sequence.index(tmp[0])
+                    tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
+                zone_average_set.add(
+                    self.real_round(sum(tmp) / next_weekday + len(tmp)) % self.back_vocab_size
+                ) if len(tmp) > 0 else None
+            kills.update(zone_average_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+                            zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
+
+        def update_sum_total_average_set_to_kills():
+            sum_total = self.calculate_sum_total(last_sequence)
+            sum_total_average_set = {
+                # self.real_round(sum_total / next_weekday) % self.back_vocab_size,  # 0.91
+                self.real_round(min(last_sequence) + max(last_sequence)) % self.back_vocab_size,  # 0.90
+            }
+            kills.update(sum_total_average_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"sum total average add: {sorted(sum_total_average_set)}, "
+                               f"size: {len(sum_total_average_set)}",
+                            zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
+                               f"数量: {len(sum_total_average_set)}")
+
+        def update_span_set_to_kills():
+            span = self.calculate_span(last_sequence)
+            span_set = {
+                abs(last_sequence[next_weekday % self.back_size] - span),  # 0.90
+                (last_sequence[next_weekday % self.back_size] + span) % self.back_vocab_size,  # 0.90
+                # span - next_weekday,
+            }
+            kills.update(span_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+                            zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
         kills = set()
         last_sequence = sequences[-1]
-        odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
-        zone_ratio = self.calculate_zone_ratio(last_sequence, self.back_zone_ranges)
-        zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
-                            max((n - 1 if n != 0 else n) for n in zone_ratio)]
-        euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
-                                                               (odd_even_ratio[0], odd_even_ratio[-1]))
-        indices = [zone_ratio_index[0], zone_ratio_index[-1]]
-        reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
-        zone_ratio_index_num_set = {
-            abs(last_sequence[indices[0]] - last_sequence[indices[1]]) + euclidean_distance,
-            # (abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance) % self.back_vocab_size,
-            abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]]) + euclidean_distance,
-            # (abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]]) + euclidean_distance) % self.back_vocab_size,
-        }
-        kills.update(zone_ratio_index_num_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"The difference between the sum of the filter zone ratio "
-                           f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
-                           f"size: {len(zone_ratio_index_num_set)}",
-                        zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
-                           f"数量: {len(zone_ratio_index_num_set)}")
 
-        zone_average_set = set()
-        for zone in self.back_zone_ranges:
-            tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
-            if len(tmp) == 1:
-                unique_index = last_sequence.index(tmp[0])
-                tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
-            zone_average_set.add(self.real_round(sum(tmp) / len(tmp))) if len(tmp) > 0 else None
-        kills.update(zone_average_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
-                        zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
-
-        sum_total = self.calculate_sum_total(last_sequence)
-        sum_total_average_set = {
-            self.real_round(sum_total / self.back_size),
-            self.real_round((min(last_sequence) + max(last_sequence)) / 2)
-        }
-        kills.update(sum_total_average_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"sum total average add: {sorted(sum_total_average_set)}, "
-                           f"size: {len(sum_total_average_set)}",
-                        zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
-                           f"数量: {len(sum_total_average_set)}")
-
-        span = self.calculate_span(last_sequence)
-        span_set = {abs(last_sequence[0] - span), (last_sequence[-1] + span) % 35, span - next_weekday}
-        kills.update(span_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
-                        zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
-
-        edge_indexes = train_predict(sequences, self.calculate_edge_number_index)
-        # previous_edge_index = self.calculate_edge_number_index(sequences[-2], last_sequence)
-        # edge_indexes.update(set(previous_edge_index))
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"predict maybe edge index: {edge_indexes}",
-                        zh=f"预测可能的边号下标: {edge_indexes}")
-        if edge_indexes:
-            for edge in range(self.back_size):
-                if edge + 1 not in edge_indexes:
-                    kills.update(last_sequence[edge] + i for i in [-1, 1])
-
-        same_indexes = train_predict(sequences, self.calculate_same_number_index)
-        # previous_same_index = self.calculate_same_number_index(sequences[-2], last_sequence)
-        # same_indexes.update(set(previous_same_index))
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"predict maybe same index: {same_indexes}",
-                        zh=f"预测可能的同号下标: {same_indexes}")
-        if same_indexes:
-            for same in range(self.back_size):
-                if same + 1 not in same_indexes:
-                    kills.update({last_sequence[same]})
+        update_zone_ratio_index_num_set_to_kills()
+        # update_zone_average_set_to_kills()
+        update_sum_total_average_set_to_kills()
+        # update_span_set_to_kills()
 
         return kills
 
@@ -939,8 +941,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                           for result in func_name(c[-1], n)]
             return (
                 {self.exponential_moving_average_next_value(train_data),
-                 self.linear_regression_next_value_by_index(train_data),
-                 self.harmonic_regression_next_value_by_index(train_data)}
+                 self.linear_regression_next_value(train_data),
+                 self.harmonic_regression_next_value(train_data)}
                 if len(train_data) > 2 else {}
             )
 
@@ -964,14 +966,30 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         bankers.update(sequences[-1][same - 1] for same in previous_same_index if same - 1 in range(5))
         return bankers
 
-    @staticmethod
-    def calculate_back_bankers(sequences: List[List[int]], next_weekday: int) -> Set[int]:
+    def calculate_back_bankers(
+            self,
+            sequences: List[List[int]],
+            next_weekday: int,
+            show_details: str = None
+    ) -> Set[int]:
         """Helper function to calculate back banker numbers based on the last sequence."""
+        def update_span_set_to_backers():
+            span = self.calculate_span(last_sequence)
+            span_set = {
+                abs(last_sequence[next_weekday % self.back_size] - span),  # 0.90
+                (last_sequence[next_weekday % self.back_size] + span) % self.back_vocab_size,  # 0.90
+                # span - next_weekday,
+            }
+            bankers.update(span_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+                            zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
+        bankers = set()
         last_sequence = sequences[-1]
-        b1, b2 = last_sequence
-        bankers = {b1, b2}
-        for i in last_sequence:
-            bankers.update({i - 1, i + 1})
+
+        update_span_set_to_backers()
+
         return bankers
 
     def get_previous_history_data(self, next_period: int = None):
@@ -1215,8 +1233,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
                 for predictor in [
                     self.exponential_moving_average_next_value,
-                    self.linear_regression_next_value_by_index,
-                    self.random_forest_regressor_next_value_by_index
+                    self.linear_regression_next_value,
+                    self.random_forest_regressor_next_value
                 ]:
                     # Initialize the nested sets for each feature and region if not already present
                     region_predictions = predictions.setdefault(feature, {}).setdefault(region, Counter())
@@ -1282,8 +1300,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         predictions = [
             tuple(predictor(seq) for seq in matrix_flip) for predictor in [
                 self.exponential_moving_average_next_value,
-                self.linear_regression_next_value_by_index,
-                self.random_forest_regressor_next_value_by_index,
+                self.linear_regression_next_value,
+                self.random_forest_regressor_next_value,
             ]
         ]
 
@@ -1366,66 +1384,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
         return predict_data
-
-    def calculate_predictions_and_intervals(
-            self,
-            data: List[Union[float, int]],
-            sd_threshold: float,
-            rolling_size: int,
-            warm_start: bool = False,
-            random_state: int = 12,
-            param_distributions: Optional[Dict] = None,
-            param_overrides: Optional[Dict] = None
-    ) -> Tuple[Union[float, int], int, int]:
-        """
-        Calculate prediction intervals based on historical data and a specified rolling size.
-
-        Args:
-            data (List[float]): The list of historical data points.
-            sd_threshold (float): The threshold for standard deviation calculations.
-            rolling_size (int): The number of recent data points to consider for rolling calculations.
-            warm_start (bool, optional): Whether to use the previous model state for training. Defaults to False.
-            random_state (int, optional): A seed used by the random number generator for reproducibility. Defaults to 12.
-            param_distributions (Optional[Dict]): The distribution of parameters to try in randomized search.
-            param_overrides (Optional[Dict]): Additional parameters for the RandomizedSearchCV.
-
-        Returns:
-            Tuple[float, int, int]: A tuple containing the predicted value, and the minimum and maximum values of the prediction interval.
-        """
-        # Calculate standard deviation and tendency using a Welford's method based implementation
-        sd = self.calculate_standard_deviation_welford(data[-rolling_size:])
-        tendency = 0
-        rsi = self.relative_strength_index(data[-rolling_size:], period=rolling_size // 2)
-        if data[-1] >= math.floor(0.75 * sd_threshold) or rsi > 69:
-            tendency = -1
-        elif data[-1] <= math.ceil(0.12 * sd_threshold) or rsi < 31:
-            tendency = 1
-        param_overrides = param_overrides or {
-            'n_iter': 100,
-            'cv': 3,
-            'scoring': 'neg_mean_squared_error',
-            'verbose': 0,
-            'random_state': 12,
-            'n_jobs': -1
-        }
-        # Predict the next value using a random forest regressor
-        pred = self.random_forest_regressor_next_value(data, rolling_size=rolling_size,
-                                                       warm_start=warm_start,
-                                                       random_state=random_state,
-                                                       param_distributions=param_distributions,
-                                                       param_overrides=param_overrides)
-
-        # Set default interval values based on zero tendency
-        min_val = math.floor(pred - sd)
-        max_val = math.ceil(pred + sd)
-
-        # Adjust interval based on the tendency
-        if tendency < 0:
-            max_val = math.ceil(pred + sd)
-        elif tendency > 0:
-            min_val = math.floor(pred - sd)
-
-        return pred, min_val, max_val
 
     def model_predict(
             self,
@@ -1543,6 +1501,54 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                         en=f"model predict exclude front: {sorted(exclude_back_set)}, size: {len(exclude_back_set)}",
                         zh=f"模型预测后区排除数字: {sorted(exclude_back_set)}, 数量: {len(exclude_back_set)}")
 
+        # 2 pass predict
+        self.detail_log(app_log=self.app_log, show_details=show_details, en="", zh="")
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en="The model prediction results are used for secondary prediction",
+                        zh="使用模型预测结果进行二次预测")
+        matrix_flip = [[predict_data[j][i] for j in range(len(predict_data))] for i in range(len(predict_data[0]))]
+        # Apply the transposed matrix to each predictor and generate predictions
+        two_pass_predictions = [
+            tuple(predictor(seq) for seq in matrix_flip) for predictor in [
+                self.exponential_moving_average_next_value,
+                self.linear_regression_next_value,
+                self.random_forest_regressor_next_value,
+            ]
+        ]
+        for data in two_pass_predictions:
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=', '.join(f'{num:>2}' for num in data),
+                            zh=', '.join(f'{num:>2}' for num in data))
+        two_pass_predict_data_front = [self.calculate_front(data) for data in two_pass_predictions]
+        two_pass_predict_front_set = {num for data in two_pass_predict_data_front for num in data}
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"two pass model predict front: {sorted(two_pass_predict_front_set)}, "
+                           f"size: {len(two_pass_predict_front_set)}",
+                        zh=f"二次模型预测前区数字: {sorted(two_pass_predict_front_set)}, "
+                           f"数量: {len(two_pass_predict_front_set)}")
+
+        two_pass_predict_data_back = [self.calculate_back(data) for data in two_pass_predictions]
+        two_pass_predict_back_set = {num for data in two_pass_predict_data_back for num in data}
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"two pass model predict back: {sorted(two_pass_predict_back_set)}, "
+                           f"size: {len(two_pass_predict_back_set)}",
+                        zh=f"二次模型预测后区数字: {sorted(two_pass_predict_back_set)}, "
+                           f"数量: {len(two_pass_predict_back_set)}")
+
+        two_pass_exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(two_pass_predict_front_set)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"two pass model predict exclude front: {sorted(two_pass_exclude_front_set)}, "
+                           f"size: {len(two_pass_exclude_front_set)}",
+                        zh=f"二次模型预测前区排除数字: {sorted(two_pass_exclude_front_set)}, "
+                           f"数量: {len(two_pass_exclude_front_set)}")
+
+        two_pass_exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(two_pass_predict_back_set)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"two pass model predict exclude front: {sorted(two_pass_exclude_back_set)}, "
+                           f"size: {len(two_pass_exclude_back_set)}",
+                        zh=f"二次模型预测后区排除数字: {sorted(two_pass_exclude_back_set)}, "
+                           f"数量: {len(two_pass_exclude_back_set)}")
+
         # ready data
         history_data = self.get_previous_history_data(next_period=next_period)
         period_data = [self.convert_lottery_data(d) for d in self.get_previous_period_data(next_period=next_period)]
@@ -1555,27 +1561,32 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         }
 
         # generate kill numbers
+        self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
         front_kill_numbers, back_kill_numbers = set(), set()
         for key, val in data_map.items():
             # self.detail_log(app_log=self.app_log, show_details=show_details,
             #                 en=f"analyze last {window_size} {key} get kill data:",
             #                 zh=f"分析最近 {window_size} {key} 获得杀码数据:")
             kill_numbers = self.get_kill_numbers(val[-window_size:], next_period=next_period,
-                                                 next_weekday=next_weekday, show_details=show_details)
+                                                 next_weekday=next_weekday, show_details=None)
             front_kill_numbers.update(kill_numbers[0])
             back_kill_numbers.update(kill_numbers[1])
+            self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
 
         # generate banker numbers
+        self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
         front_banker_numbers, back_banker_numbers = set(), set()
         for key, val in data_map.items():
             # self.detail_log(app_log=self.app_log, show_details=show_details,
             #                 en=f"analyze last {window_size} {key} get banker data:",
             #                 zh=f"分析最近 {window_size} {key} 获得胆码数据:")
             banker_numbers = self.get_banker_numbers(val[-window_size:], next_period=next_period,
-                                                     next_weekday=next_weekday, show_details=show_details)
+                                                     next_weekday=next_weekday, show_details=None)
             front_banker_numbers.update(banker_numbers[0])
             back_banker_numbers.update(banker_numbers[1])
+            self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
 
+        self.detail_log(app_log=self.app_log, show_details=show_details, en="", zh="")
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en="Now, Will analyze the predictions..., Then adjust data",
                         zh="现在，将会分析这些预测…，然后调整数据")
