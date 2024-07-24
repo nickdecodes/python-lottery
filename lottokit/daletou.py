@@ -642,7 +642,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
     def get_kill_numbers(
             self,
-            data: List[Any],
             next_period: int = None,
             next_weekday: int = None,
             show_details: str = None
@@ -651,7 +650,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Calculate and return sets of 'kill numbers' for both front and back sequences based on provided data.
 
         Parameters:
-            data (List[Any]): The data to process.
             next_period (int, optional): The next period number. If None, it's calculated.
             next_weekday (int, optional): The next weekday number. If None, it's calculated.
             show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
@@ -659,30 +657,39 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Returns:
             Tuple[Set[int], Set[int]]: A tuple containing two sets of kill numbers for front and back sequences.
         """
-        front_sequences = [self.calculate_front(d) for d in data]
-        back_sequences = [self.calculate_back(d) for d in data]
-
         next_weekday = next_weekday or self.get_next_weekday()
         next_period = next_period or self.get_next_period()
 
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"last award front data: {sorted(front_sequences[-1])}",
-        #                 zh=f"最近一期中奖前区: {sorted(front_sequences[-1])}")
+        history_data = self.get_previous_history_data(next_period=next_period)
+        period_data = [self.convert_lottery_data(d) for d in self.get_previous_period_data(next_period=next_period)]
+        weekday_data = [self.convert_lottery_data(d) for d in self.get_previous_weekday_data(next_period=next_period,
+                                                                                             next_weekday=next_weekday)]
+
         self.detail_log(app_log=self.app_log, show_details=show_details, en="front", zh="前区")
-        front_kill_numbers = self.calculate_front_kills(front_sequences, next_period, next_weekday,
-                                                        show_details=show_details)
-        front_kill_numbers = {num for num in front_kill_numbers if 1 <= num <= self.front_vocab_size}
+        self.detail_log(app_log=self.app_log, show_details=show_details, en="front", zh=f"{history_data[-1]}")
+        front_kill_numbers = set()
+        for data in [
+            history_data,
+            period_data,
+            # weekday_data,
+        ]:
+            front_sequences = [self.calculate_front(d) for d in data]
+            tmp = self.calculate_front_kills(front_sequences, next_period, next_weekday, show_details=show_details)
+            front_kill_numbers.update({num for num in tmp if 1 <= num <= self.front_vocab_size})
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"front kill numbers: {sorted(front_kill_numbers)}, size: {len(front_kill_numbers)}",
                         zh=f"前区杀码: {sorted(front_kill_numbers)}, 数量: {len(front_kill_numbers)}")
 
-        # Ensure numbers are within the valid range
-        # self.detail_log(app_log=self.app_log, show_details=show_details,
-        #                 en=f"last award back data: {sorted(back_sequences[-1])}",
-        #                 zh=f"最近一期中奖后区: {sorted(back_sequences[-1])}")
         self.detail_log(app_log=self.app_log, show_details=show_details, en="back", zh="后区")
-        back_kill_numbers = self.calculate_back_kills(back_sequences, next_weekday, show_details=show_details)
-        back_kill_numbers = {num for num in back_kill_numbers if 1 <= num <= self.back_vocab_size}
+        back_kill_numbers = set()
+        for data in [
+            history_data,
+            period_data,
+            weekday_data,
+        ]:
+            back_sequences = [self.calculate_back(d) for d in data]
+            tmp = self.calculate_back_kills(back_sequences, next_weekday, show_details=show_details)
+            back_kill_numbers.update({num for num in tmp if 1 <= num <= self.back_vocab_size})
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"back kill numbers: {sorted(back_kill_numbers)}, size: {len(back_kill_numbers)}",
                         zh=f"后区杀码: {sorted(back_kill_numbers)}, 数量: {len(back_kill_numbers)}")
@@ -756,8 +763,9 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         def update_sum_total_average_set_to_kills():
             sum_total = self.calculate_sum_total(last_sequence)
             sum_total_average_set = {
-                self.real_round(sum_total / next_weekday) % self.front_vocab_size,  # 0.91
-                self.real_round((min(last_sequence) + max(last_sequence)) / next_weekday) % self.front_vocab_size,  # 0.90
+                self.real_round(sum_total / next_weekday) % self.front_vocab_size,  # 0.86
+                self.real_round((min(last_sequence) + max(last_sequence)) / next_weekday) % self.front_vocab_size,
+                # 0.86
             }
             kills.update(sum_total_average_set)
             self.detail_log(app_log=self.app_log, show_details=show_details,
@@ -769,14 +777,50 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         def update_span_set_to_kills():
             span = self.calculate_span(last_sequence)
             span_set = {
-                abs(last_sequence[next_weekday % self.front_size] - span),  # 0.90
-                (last_sequence[next_weekday % self.front_size] + span) % self.front_vocab_size,  # 0.90
+                abs(last_sequence[span % self.front_size % next_weekday] - span),  # 0.87
+                (last_sequence[next_weekday % self.front_size] + span) % self.front_vocab_size,  # 0.86
                 # span - next_weekday,
             }
             kills.update(span_set)
             self.detail_log(app_log=self.app_log, show_details=show_details,
                             en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
                             zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
+        def update_edge_index_to_kills():
+            period_data = [self.convert_lottery_data(d) for d in
+                           self.get_previous_period_data(next_period=next_period)]
+            weekday_data = [self.convert_lottery_data(d) for d in
+                            self.get_previous_weekday_data(next_period=next_period,
+                                                           next_weekday=next_weekday)]
+            for _d in [
+                period_data,
+                # weekday_data,
+            ]:
+                _sequences = [ld.front for ld in _d[-15:]]
+                edge_index = train_predict(_sequences, self.calculate_edge_number_index)
+                if edge_index:
+                    kills.update(_sequences[-1][edge - 1] + i for edge in
+                                 edge_index if edge - 1 in range(self.front_size) for i in [-1, 1])
+                previous_edge_index = self.calculate_edge_number_index(_sequences[-2], _sequences[-1])
+                kills.update(_sequences[-1][edge - 1] + i for edge in
+                             previous_edge_index if edge - 1 in range(5) for i in [-1, 1])
+
+        def update_same_index_to_kills():
+            period_data = [self.convert_lottery_data(d) for d in
+                           self.get_previous_period_data(next_period=next_period)]
+            weekday_data = [self.convert_lottery_data(d) for d in
+                            self.get_previous_weekday_data(next_period=next_period,
+                                                           next_weekday=next_weekday)]
+            for _d in [
+                period_data,
+                # weekday_data,
+            ]:
+                _sequences = [ld.front for ld in _d[-15:]]
+                same_index = train_predict(_sequences, self.calculate_same_number_index)
+                if same_index:
+                    kills.update(_sequences[-1][same - 1] for same in same_index if same - 1 in range(self.front_size))
+                previous_same_index = self.calculate_same_number_index(_sequences[-2], _sequences[-1])
+                kills.update(_sequences[-1][same - 1] for same in previous_same_index if same - 1 in range(5))
 
         kills = set()
         last_sequence = sequences[-1]
@@ -785,6 +829,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         update_zone_average_set_to_kills()
         update_sum_total_average_set_to_kills()
         update_span_set_to_kills()
+        # update_edge_index_to_kills()
+        # update_same_index_to_kills()
 
         return kills
 
@@ -880,15 +926,14 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         last_sequence = sequences[-1]
 
         update_zone_ratio_index_num_set_to_kills()
-        # update_zone_average_set_to_kills()
-        update_sum_total_average_set_to_kills()
+        update_zone_average_set_to_kills()
+        # update_sum_total_average_set_to_kills()
         # update_span_set_to_kills()
 
         return kills
 
     def get_banker_numbers(
             self,
-            data: List[Any],
             next_period: int = None,
             next_weekday: int = None,
             show_details: str = None
@@ -897,7 +942,6 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Calculate and return sets of 'banker numbers' for both front and back sequences based on provided data.
 
         Parameters:
-            data (List[Any]): The data to process.
             next_period (int, optional): The next period number. If None, it's calculated.
             next_weekday (int, optional): The next weekday number. If None, it's calculated.
             show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
@@ -905,21 +949,37 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         Returns:
             Tuple[Set[int], Set[int]]: A tuple containing two sets of banker numbers for front and back sequences.
         """
-        front_sequences = [self.calculate_front(d) for d in data]
-        back_sequences = [self.calculate_back(d) for d in data]
         next_weekday = next_weekday or self.get_next_weekday()
         next_period = next_period or self.get_next_period()
+        history_data = self.get_previous_history_data(next_period=next_period)
+        period_data = [self.convert_lottery_data(d) for d in self.get_previous_period_data(next_period=next_period)]
+        weekday_data = [self.convert_lottery_data(d) for d in self.get_previous_weekday_data(next_period=next_period,
+                                                                                             next_weekday=next_weekday)]
 
         # Ensure front numbers are within the valid range
-        front_banker_numbers = self.calculate_front_bankers(front_sequences, next_period, next_weekday)
-        front_banker_numbers = {num for num in front_banker_numbers if 1 <= num <= self.front_vocab_size}
+        front_banker_numbers = set()
+        for data in [
+            history_data,
+            period_data,
+            weekday_data,
+        ]:
+            front_sequences = [self.calculate_front(d) for d in data]
+            tmp = self.calculate_front_bankers(front_sequences, next_period, next_weekday)
+            front_banker_numbers.update({num for num in tmp if 1 <= num <= self.front_vocab_size})
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"back banker numbers: {sorted(front_banker_numbers)}, size: {len(front_banker_numbers)}",
                         zh=f"前区胆码: {sorted(front_banker_numbers)}, 数量: {len(front_banker_numbers)}")
 
         # Ensure back numbers are within the valid range
-        back_backer_numbers = self.calculate_back_bankers(back_sequences, next_weekday)
-        back_banker_numbers = {num for num in back_backer_numbers if 1 <= num <= self.back_vocab_size}
+        back_banker_numbers = set()
+        for data in [
+            # history_data,
+            period_data,
+            weekday_data,
+        ]:
+            back_sequences = [self.calculate_back(d) for d in data]
+            tmp = self.calculate_back_bankers(back_sequences, next_weekday)
+            back_banker_numbers.update({num for num in tmp if 1 <= num <= self.back_vocab_size})
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"back banker numbers: {sorted(back_banker_numbers)}, size: {len(back_banker_numbers)}",
                         zh=f"后区胆码: {sorted(back_banker_numbers)}, 数量: {len(back_banker_numbers)}")
@@ -946,24 +1006,121 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                 if len(train_data) > 2 else {}
             )
 
-        bankers = set()
-        edge_index = train_predict(sequences, self.calculate_edge_number_index)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"predict maybe edge index: {edge_index}",
-                        zh=f"预测可能的边号下标: {edge_index}")
-        if edge_index:
-            bankers.update(
-                sequences[-1][edge - 1] + i for edge in edge_index if edge - 1 in range(self.front_size) for i in
-                [-1, 1])
-        previous_edge_index = self.calculate_edge_number_index(sequences[-2], sequences[-1])
-        bankers.update(
-            sequences[-1][edge - 1] + i for edge in previous_edge_index if edge - 1 in range(5) for i in [-1, 1])
+        def update_zone_ratio_index_num_set_to_bankers():
+            odd_even_ratio = self.calculate_odd_even_ratio(last_sequence)
+            zone_ratio = self.calculate_zone_ratio(last_sequence, self.front_zone_ranges)
+            zone_ratio_index = [min((n - 1 if n != 0 else n) for n in zone_ratio),
+                                max((n - 1 if n != 0 else n) for n in zone_ratio)]
+            euclidean_distance = self.calculate_euclidean_distance((zone_ratio[0], zone_ratio[-1]),
+                                                                   (odd_even_ratio[0], odd_even_ratio[-1]))
+            indices = [zone_ratio_index[0], zone_ratio_index[-1]]
+            reverse_indices = [-(zone_ratio_index[0] + 1), -(zone_ratio_index[-1] + 1)]
+            sub_indices_0_1 = abs(last_sequence[indices[0]] - last_sequence[indices[1]])
+            add_indices_0_1 = abs(last_sequence[indices[0]] + last_sequence[indices[1]]) + euclidean_distance
+            sub_re_indices_0_1 = abs(last_sequence[reverse_indices[0]] - last_sequence[reverse_indices[1]])
+            add_re_indices_0_1 = abs(last_sequence[reverse_indices[0]] + last_sequence[reverse_indices[1]])
+            zone_ratio_index_num_set = {
+                self.real_round(sub_indices_0_1),
+                # add_indices_0_1 + euclidean_distance % self.front_vocab_size,
+                # self.real_round(sub_re_indices_0_1 + euclidean_distance),
+                self.real_round((add_re_indices_0_1 + euclidean_distance) / next_weekday) % self.front_vocab_size,
+            }
+            bankers.update(zone_ratio_index_num_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"The difference between the sum of the filter zone ratio "
+                               f"and the corresponding subscript: {sorted(zone_ratio_index_num_set)}, "
+                               f"size: {len(zone_ratio_index_num_set)}",
+                            zh=f"过滤区间比对应下标的和差值: {sorted(zone_ratio_index_num_set)}, "
+                               f"数量: {len(zone_ratio_index_num_set)}")
 
-        same_index = train_predict(sequences, self.calculate_same_number_index)
-        if same_index:
-            bankers.update(sequences[-1][same - 1] for same in same_index if same - 1 in range(self.front_size))
-        previous_same_index = self.calculate_same_number_index(sequences[-2], sequences[-1])
-        bankers.update(sequences[-1][same - 1] for same in previous_same_index if same - 1 in range(5))
+        def update_zone_average_set_to_bankers():
+            zone_average_set = set()
+            for zone in self.front_zone_ranges:
+                tmp = [n for n in last_sequence if n in range(zone[0], zone[1] + 1)]
+                if len(tmp) == 1:
+                    unique_index = last_sequence.index(tmp[0])
+                    tmp = [last_sequence[unique_index - 1], last_sequence[(unique_index + 1) % len(last_sequence)]]
+                zone_average_set.add(
+                    self.real_round(sum(tmp) / next_weekday + len(tmp)) % self.front_vocab_size
+                ) if len(tmp) > 0 else None
+            bankers.update(zone_average_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"zone average add: {sorted(zone_average_set)}, size: {len(zone_average_set)}",
+                            zh=f"过滤区间平均值: {sorted(zone_average_set)}, 数量: {len(zone_average_set)}")
+
+        def update_sum_total_average_set_to_bankers():
+            sum_total = self.calculate_sum_total(last_sequence)
+            sum_total_average_set = {
+                last_sequence[sum_total % self.front_size],
+                last_sequence[sum_total % 7 % 5],
+            }
+            bankers.update(sum_total_average_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"sum total average add: {sorted(sum_total_average_set)}, "
+                               f"size: {len(sum_total_average_set)}",
+                            zh=f"过滤和值平均值: {sorted(sum_total_average_set)}, "
+                               f"数量: {len(sum_total_average_set)}")
+
+        def update_span_set_to_bankers():
+            span = self.calculate_span(last_sequence)
+            span_set = {
+                abs(last_sequence[span % self.front_size]),  # 0.90
+                abs(last_sequence[span % self.front_size] - span),  # 0.90
+                (last_sequence[span % self.front_size] + span) % self.front_vocab_size,  # 0.90
+                # span - next_weekday,
+            }
+            bankers.update(span_set)
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=f"span about add: {sorted(span_set)}, size: {len(span_set)}",
+                            zh=f"过滤跨度相关值: {sorted(span_set)}, 数量: {len(span_set)}")
+
+        def update_edge_index_to_bankers():
+            period_data = [self.convert_lottery_data(d) for d in
+                           self.get_previous_period_data(next_period=next_period)]
+            weekday_data = [self.convert_lottery_data(d) for d in
+                            self.get_previous_weekday_data(next_period=next_period,
+                                                           next_weekday=next_weekday)]
+            for _d in [
+                period_data,
+                # weekday_data,
+            ]:
+                _sequences = [ld.front for ld in _d[-15:]]
+                edge_index = train_predict(_sequences, self.calculate_edge_number_index)
+                if edge_index:
+                    bankers.update(_sequences[-1][edge - 1] + i for edge in
+                                   edge_index if edge - 1 in range(self.front_size) for i in [-1, 1])
+                previous_edge_index = self.calculate_edge_number_index(_sequences[-2], _sequences[-1])
+                bankers.update(_sequences[-1][edge - 1] + i for edge in
+                               previous_edge_index if edge - 1 in range(5) for i in [-1, 1])
+
+        def update_same_index_to_bankers():
+            period_data = [self.convert_lottery_data(d) for d in
+                           self.get_previous_period_data(next_period=next_period)]
+            weekday_data = [self.convert_lottery_data(d) for d in
+                            self.get_previous_weekday_data(next_period=next_period,
+                                                           next_weekday=next_weekday)]
+            for _d in [
+                period_data,
+                # weekday_data,
+            ]:
+                _sequences = [ld.front for ld in _d[-15:]]
+                same_index = train_predict(_sequences, self.calculate_same_number_index)
+                if same_index:
+                    bankers.update(
+                        _sequences[-1][same - 1] for same in same_index if same - 1 in range(self.front_size))
+                previous_same_index = self.calculate_same_number_index(_sequences[-2], _sequences[-1])
+                bankers.update(_sequences[-1][same - 1] for same in previous_same_index if same - 1 in range(5))
+
+        bankers = set()
+        last_sequence = sequences[-1]
+
+        # update_zone_ratio_index_num_set_to_bankers()
+        # update_zone_average_set_to_bankers()
+        # update_sum_total_average_set_to_bankers()
+        # update_span_set_to_bankers()
+        update_edge_index_to_bankers()
+        update_same_index_to_bankers()
+
         return bankers
 
     def calculate_back_bankers(
@@ -973,6 +1130,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             show_details: str = None
     ) -> Set[int]:
         """Helper function to calculate back banker numbers based on the last sequence."""
+
         def update_span_set_to_backers():
             span = self.calculate_span(last_sequence)
             span_set = {
@@ -993,34 +1151,43 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         return bankers
 
     def get_previous_history_data(self, next_period: int = None):
-        history_data = self.read_csv_data_from_file(self.history_record_path, app_log=self.app_log)
-        if next_period is None:
-            history_data = history_data[:]
-        else:
-            index = next((i for i, sublist in enumerate(history_data) if sublist[0] == str(next_period)), -1)
-            history_data = history_data[:index] if index != -1 else history_data[:]
-        return history_data
+        try:
+            history_data = self.read_csv_data_from_file(self.history_record_path, app_log=self.app_log)
+            if next_period is None:
+                history_data = history_data[:]
+            else:
+                index = next((i for i, sublist in enumerate(history_data) if sublist[0] == str(next_period)), -1)
+                history_data = history_data[:index] if index != -1 else history_data[:]
+            return history_data
+        except Exception as ex:
+            return []
 
     def get_previous_period_data(self, next_period: int = None):
-        period_data = self.read_json_data_from_file(self.period_record_path, app_log=self.app_log)
-        if next_period is None:
-            period_data = period_data.get(str(self.get_next_period()).zfill(3))
-        else:
-            period_data = period_data.get(str(next_period % 100).zfill(3))
-            index = next((i for i, sublist in enumerate(period_data) if sublist[0] == str(next_period)), -1)
-            period_data = period_data[:index] if index != -1 else period_data[:]
-        return period_data
+        try:
+            period_data = self.read_json_data_from_file(self.period_record_path, app_log=self.app_log)
+            if next_period is None:
+                period_data = period_data.get(str(self.get_next_period()).zfill(3))
+            else:
+                period_data = period_data.get(str(next_period % 100).zfill(3))
+                index = next((i for i, sublist in enumerate(period_data) if sublist[0] == str(next_period)), -1)
+                period_data = period_data[:index] if index != -1 else period_data[:]
+            return period_data
+        except Exception as ex:
+            return []
 
     def get_previous_weekday_data(self, next_weekday: int = None, next_period: int = None):
-        weekday_data = self.read_json_data_from_file(self.weekday_record_path, app_log=self.app_log)
-        if next_weekday is None:
-            weekday_data = weekday_data.get(str(self.get_next_weekday()))
-        else:
-            weekday_data = weekday_data.get(str(next_weekday))
-            if next_period is not None:
-                index = next((i for i, sublist in enumerate(weekday_data) if sublist[0] == str(next_period)), -1)
-                weekday_data = weekday_data[:index] if index != -1 else weekday_data[:]
-        return weekday_data
+        try:
+            weekday_data = self.read_json_data_from_file(self.weekday_record_path, app_log=self.app_log)
+            if next_weekday is None:
+                weekday_data = weekday_data.get(str(self.get_next_weekday()))
+            else:
+                weekday_data = weekday_data.get(str(next_weekday))
+                if next_period is not None:
+                    index = next((i for i, sublist in enumerate(weekday_data) if sublist[0] == str(next_period)), -1)
+                    weekday_data = weekday_data[:index] if index != -1 else weekday_data[:]
+            return weekday_data
+        except Exception as ex:
+            return []
 
     def convert_lottery_data(self, data: List[Any]) -> Lottery:
         """
@@ -1551,40 +1718,28 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         # ready data
         history_data = self.get_previous_history_data(next_period=next_period)
-        period_data = [self.convert_lottery_data(d) for d in self.get_previous_period_data(next_period=next_period)]
-        weekday_data = [self.convert_lottery_data(d) for d in self.get_previous_weekday_data(next_period=next_period,
-                                                                                             next_weekday=next_weekday)]
-        data_map = {
-            'history': history_data,
-            'period': period_data,
-            'weekday': weekday_data
-        }
 
         # generate kill numbers
         self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
         front_kill_numbers, back_kill_numbers = set(), set()
-        for key, val in data_map.items():
-            # self.detail_log(app_log=self.app_log, show_details=show_details,
-            #                 en=f"analyze last {window_size} {key} get kill data:",
-            #                 zh=f"分析最近 {window_size} {key} 获得杀码数据:")
-            kill_numbers = self.get_kill_numbers(val[-window_size:], next_period=next_period,
-                                                 next_weekday=next_weekday, show_details=None)
-            front_kill_numbers.update(kill_numbers[0])
-            back_kill_numbers.update(kill_numbers[1])
-            self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"analyze last {window_size} {key} get kill data:",
+        #                 zh=f"分析最近 {window_size} {key} 获得杀码数据:")
+        kill_numbers = self.get_kill_numbers(next_period=next_period, next_weekday=next_weekday, show_details=None)
+        front_kill_numbers.update(kill_numbers[0])
+        back_kill_numbers.update(kill_numbers[1])
+        self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
 
         # generate banker numbers
         self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
         front_banker_numbers, back_banker_numbers = set(), set()
-        for key, val in data_map.items():
-            # self.detail_log(app_log=self.app_log, show_details=show_details,
-            #                 en=f"analyze last {window_size} {key} get banker data:",
-            #                 zh=f"分析最近 {window_size} {key} 获得胆码数据:")
-            banker_numbers = self.get_banker_numbers(val[-window_size:], next_period=next_period,
-                                                     next_weekday=next_weekday, show_details=None)
-            front_banker_numbers.update(banker_numbers[0])
-            back_banker_numbers.update(banker_numbers[1])
-            self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
+        # self.detail_log(app_log=self.app_log, show_details=show_details,
+        #                 en=f"analyze last {window_size} {key} get banker data:",
+        #                 zh=f"分析最近 {window_size} {key} 获得胆码数据:")
+        banker_numbers = self.get_banker_numbers(next_period=next_period, next_weekday=next_weekday, show_details=None)
+        front_banker_numbers.update(banker_numbers[0])
+        back_banker_numbers.update(banker_numbers[1])
+        self.detail_log(app_log=self.app_log, show_details=None, en="", zh="")
 
         self.detail_log(app_log=self.app_log, show_details=show_details, en="", zh="")
         self.detail_log(app_log=self.app_log, show_details=show_details,
