@@ -1451,31 +1451,57 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         :param window: The size of the window to consider, default is 10.
         :return: A list of predicted Lottery objects.
         """
+
+        def _predict(index, zone='front'):
+            # Convert to Lottery data objects
+            last_window_data = [self.convert_lottery_data(d) for d in data[-index:]]
+
+            # Create a matrix of front and back area numbers
+            if zone == 'front':
+                matrix = [d.front for d in last_window_data]
+            else:
+                matrix = [d.back for d in last_window_data]
+
+            # Transpose the matrix
+            matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
+
+            # Apply the transposed matrix to each predictor and generate predictions
+            predictions = [tuple(predictor(seq) for seq in matrix_flip) for predictor in model_functions]
+            return predictions
+
         if not data:
             raise ValueError("No data provided and no file reading implemented.")
 
-        # Convert to Lottery data objects
-        last_window_data = [self.convert_lottery_data(d) for d in data[-window:]]
+        front_ind, back_ind = 0, 0
+        if window == -1:
+            front_set, back_set = set(), set()
+            for ind, nums in enumerate(reversed(data)):
+                ld = self.convert_lottery_data(nums)
+                front_set.update(ld.front)
+                if len(front_set) >= self.front_vocab_size:
+                    front_ind = ind + 1
+                back_set.update(ld.back)
+                if len(back_set) >= self.back_vocab_size:
+                    back_ind = ind + 1
+                if front_ind != 0 and back_ind != 0:
+                    break
+        else:
+            front_ind, back_ind = window, window
 
-        # Create a matrix of front and back area numbers
-        matrix = [d.front + d.back for d in last_window_data]
-
-        # Transpose the matrix
-        matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
-
-        # Apply the transposed matrix to each predictor and generate predictions
-        predictions = [
-            tuple(predictor(seq) for seq in matrix_flip) for predictor in [
-                self.exponential_moving_average_next_value,
-                self.linear_regression_next_value,
-                self.random_forest_regressor_next_value,
-            ]
+        model_functions = [
+            self.exponential_moving_average_next_value,
+            self.linear_regression_next_value,
+            self.random_forest_regressor_next_value,
         ]
+        predictions_front = _predict(front_ind, zone='front')
+        predictions_back = _predict(back_ind, zone='back')
+
+        predictions_all = [predictions_front[i] + predictions_back[i] for i in range(len(model_functions))]
 
         # Create a list of Lottery objects based on the predictions
         return [
             self.Lottery('', '', '', self.calculate_front(d), self.calculate_back(d))
-            for d in predictions
+            for d in predictions_all
         ]
 
     def predict_by_last_period(

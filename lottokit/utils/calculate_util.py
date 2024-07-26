@@ -149,7 +149,7 @@ class CalculateUtil(ABC):
             yield chunk, next_element
 
     @staticmethod
-    def generate_datasets_with_rolling_size(data: List[int],
+    def generate_datasets_with_rolling_size(data: List[Any],
                                             rolling_size: int = 5,
                                             adjust: bool = False) -> Tuple[List[List[int]], List[int]]:
         """
@@ -161,7 +161,7 @@ class CalculateUtil(ABC):
         the maximum and minimum values are removed from each test set.
 
         Args:
-            data (List[int]): The input data list from which datasets are generated.
+            data (List[Any]): The input data list from which datasets are generated.
             rolling_size (int): The number of elements in each test set. Defaults to 5.
             adjust (bool): Whether to remove the maximum and minimum values from each test set. Defaults to False.
 
