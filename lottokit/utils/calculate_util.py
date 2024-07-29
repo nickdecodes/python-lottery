@@ -12,6 +12,7 @@
 
 import math
 import datetime
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import Iterable, List, Tuple, Any, Optional, Union, Set, Dict, Generator
 
@@ -87,6 +88,66 @@ class CalculateUtil(ABC):
                 current_length -= 1
 
         return list(reversed(lis))
+
+    @staticmethod
+    def encode_combination(combination: List[int], max_n: int = 35) -> int:
+        """
+        Encodes a combination of k numbers selected from 1 to max_n into a unique index.
+
+        Parameters:
+        combination (list of int): A combination of k numbers selected from 1 to max_n.
+        max_n (int): The maximum number (default is 35).
+
+        Returns:
+        int: The unique index of the combination.
+        """
+        combination = sorted(combination)  # Ensure the combination is sorted
+        index = 1  # Start index from 1
+        k = len(combination)
+
+        for i in range(k):
+            num = combination[i]
+            for j in range(num - 1):
+                if max_n - (j + 1) >= k - (i + 1):
+                    index += math.comb(max_n - (j + 1), k - (i + 1))
+
+        return np.log(index + 1)
+
+    @staticmethod
+    def decode_combination(index: int, k: int = 5, max_n: int = 35) -> List[int]:
+        """
+        Decodes a unique index into a combination of k numbers selected from 1 to max_n.
+
+        Parameters:
+        index (int): The unique index of the combination.
+        k (int): The number of elements in the combination (default is 5).
+        max_n (int): The maximum number (default is 35).
+
+        Returns:
+        list of int: The decoded combination of k numbers.
+        """
+        index = np.exp(index) - 1  # Convert to 0-based index
+        combination = []
+        remaining = k
+        current_n = max_n
+
+        while remaining > 0:
+            if remaining > current_n:
+                # Not enough elements left to fill the combination
+                break
+
+            # This ensures math.comb gets valid non-negative integers.
+            comb_value = math.comb(current_n - 1, remaining - 1)
+
+            if index >= comb_value:
+                index -= comb_value
+            else:
+                combination.append(max_n - current_n + 1)
+                remaining -= 1
+
+            current_n -= 1
+
+        return combination
 
     @staticmethod
     def longest_decreasing_subsequence(numeric_sequence: List[int]) -> List[int]:

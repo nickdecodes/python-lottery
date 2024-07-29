@@ -1428,8 +1428,45 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         if not data:
             raise ValueError("No data provided and no file reading implemented.")
 
-        last_window_data = [self.convert_lottery_data(d) for d in data[-window:]]
-        features = self.calculate_features(last_window_data)
+        def _predict(index, zone='front'):
+            # Convert to Lottery data objects
+            last_window_data = [self.convert_lottery_data(d) for d in data[-index:]]
+
+            if zone == 'front':
+                _features = self.calculate_features(last_window_data, region=1)
+            else:
+                _features = self.calculate_features(last_window_data, region=2)
+
+            return _features
+
+        if not data:
+            raise ValueError("No data provided and no file reading implemented.")
+
+        front_ind, back_ind = 0, 0
+        if window == -1:
+            front_set, back_set = set(), set()
+            for ind, nums in enumerate(reversed(data)):
+                ld = self.convert_lottery_data(nums)
+                front_set.update(ld.front)
+                if len(front_set) >= self.front_vocab_size:
+                    front_ind = ind + 1
+                back_set.update(ld.back)
+                if len(back_set) >= self.back_vocab_size:
+                    back_ind = ind + 1
+                if front_ind != 0 and back_ind != 0:
+                    break
+        else:
+            front_ind, back_ind = window, window
+
+        features_front = _predict(front_ind, zone='front')
+        features_back = _predict(back_ind, zone='back')
+        features = {
+            feature: {
+                'front': features_front.get(feature, {}).get('front'),
+                'back': features_back.get(feature, {}).get('back'),
+            }
+            for feature in set(list(features_front.keys()) + list(features_back.keys()))
+        }
         predictions = self.calculate_predictions(features)
 
         result_mapping = {
@@ -1443,12 +1480,17 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         return handle_result
 
-    def predict_by_last_window_data(self, data: Optional[List[List[Any]]], window: int = 10) -> List[Lottery]:
+    def predict_by_last_window_data(
+            self, data: Optional[List[List[Any]]],
+            window: int = 10,
+            use_index: bool = False
+    ) -> List[Lottery]:
         """
         Predict t numbers based on the data from the last window.
 
         :param data: A two-dimensional list containing historical t data.
         :param window: The size of the window to consider, default is 10.
+        :param use_index: weather use index to predict, default is False.
         :return: A list of predicted Lottery objects.
         """
 
@@ -1457,16 +1499,25 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             last_window_data = [self.convert_lottery_data(d) for d in data[-index:]]
 
             # Create a matrix of front and back area numbers
-            if zone == 'front':
-                matrix = [d.front for d in last_window_data]
+            if use_index is True:
+                if zone == 'front':
+                    matrix = [self.encode_combination(d.front, max_n=self.front_vocab_size) for d in last_window_data]
+                else:
+                    matrix = [self.encode_combination(d.back, max_n=self.back_vocab_size) for d in last_window_data]
+
+                # Apply the transposed matrix to each predictor and generate predictions
+                predictions = [predictor(matrix) for predictor in model_functions]
             else:
-                matrix = [d.back for d in last_window_data]
+                if zone == 'front':
+                    matrix = [d.front for d in last_window_data]
+                else:
+                    matrix = [d.back for d in last_window_data]
 
-            # Transpose the matrix
-            matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
+                # Transpose the matrix
+                matrix_flip = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
 
-            # Apply the transposed matrix to each predictor and generate predictions
-            predictions = [tuple(predictor(seq) for seq in matrix_flip) for predictor in model_functions]
+                # Apply the transposed matrix to each predictor and generate predictions
+                predictions = [tuple(predictor(seq) for seq in matrix_flip) for predictor in model_functions]
             return predictions
 
         if not data:
@@ -1496,7 +1547,15 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         predictions_front = _predict(front_ind, zone='front')
         predictions_back = _predict(back_ind, zone='back')
 
-        predictions_all = [predictions_front[i] + predictions_back[i] for i in range(len(model_functions))]
+        predictions_all = []
+        for i in range(len(model_functions)):
+            if use_index is True:
+                tmp1 = self.decode_combination(predictions_front[i], k=self.front_size, max_n=self.front_vocab_size)
+                tmp2 = self.decode_combination(predictions_back[i], k=self.back_size, max_n=self.back_vocab_size)
+            else:
+                tmp1 = predictions_front[i]
+                tmp2 = predictions_back[i]
+            predictions_all.append(tmp1 + tmp2)
 
         # Create a list of Lottery objects based on the predictions
         return [
@@ -1508,57 +1567,62 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             self,
             next_period: int = None,
             show_details: str = None,
-            window_size: int = 15
-    ) -> List[List[int]]:
+            window_size: int = 15,
+            use_index: bool = False,
+    ) -> (List[List[int]], Dict[str, Any]):
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_period: int eg: 24001
         :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, default is 15
+        :param use_index: weather use index to predict, default is False.
         """
         history_data = self.get_previous_history_data(next_period=next_period)
 
-        maybe_combinations = self.predict_by_last_window_data(history_data, window=window_size)
+        maybe_combinations = self.predict_by_last_window_data(history_data, window=window_size, use_index=use_index)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
         self.detail_log(app_log=self.app_log, show_details=show_details, en=predict_data, zh=predict_data)
 
         handle_result = self.handle_last_window_data(data=history_data, window=window_size)
         self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
-        return predict_data
+        return predict_data, handle_result
 
     def predict_by_same_period(
             self,
             next_period: int = None,
             show_details: str = None,
-            window_size: int = 15
-    ) -> List[List[int]]:
+            window_size: int = 15,
+            use_index: bool = False,
+    ) -> (List[List[int]], Dict[str, Any]):
         """
         Predicts features by the last period window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
         :param next_period: int eg: 24001
         :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, default is 15
+        :param use_index: weather use index to predict, default is False.
         """
         period_data = self.get_previous_period_data(next_period=next_period)
 
-        maybe_combinations = self.predict_by_last_window_data(period_data, window=window_size)
+        maybe_combinations = self.predict_by_last_window_data(period_data, window=window_size, use_index=use_index)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
         self.detail_log(app_log=self.app_log, show_details=show_details, en=predict_data, zh=predict_data)
 
         handle_result = self.handle_last_window_data(data=period_data, window=window_size)
         self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
-        return predict_data
+        return predict_data, handle_result
 
     def predict_by_last_weekday(
             self,
             next_weekday: int = None,
             next_period: int = None,
             show_details: str = None,
-            window_size: int = 15
-    ) -> List[List[int]]:
+            window_size: int = 15,
+            use_index: bool = False,
+    ) -> (List[List[int]], Dict[str, Any]):
         """
         Predicts features by the last weekday window of historical data and prints the results.
         Skips predictions where the sum of 'ratio' features does not match the expected size.
@@ -1566,42 +1630,55 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         :param next_period: int eg: 24001
         :param show_details: ['en' | 'zh'] flag to output details about the prediction, default is None
         :param window_size: int, default is 15
+        :param use_index: weather use index to predict, default is False.
         """
         weekday_data = self.get_previous_weekday_data(next_weekday=next_weekday, next_period=next_period)
 
-        maybe_combinations = self.predict_by_last_window_data(weekday_data, window=window_size)
+        maybe_combinations = self.predict_by_last_window_data(weekday_data, window=window_size, use_index=use_index)
         predict_data = [mc.front + mc.back for mc in maybe_combinations]
         self.detail_log(app_log=self.app_log, show_details=show_details, en=predict_data, zh=predict_data)
 
         handle_result = self.handle_last_window_data(data=weekday_data, window=window_size)
         self.detail_log(app_log=self.app_log, show_details=show_details, en=handle_result, zh=handle_result)
 
-        return predict_data
+        return predict_data, handle_result
 
     def model_predict(
             self,
             next_period: int = None,
             next_weekday: int = None,
             show_details: str = None,
-            window_size: int = 15
-    ) -> List[List[int]]:
+            window_size: int = 15,
+            use_index: bool = False,
+    ) -> (List[List[int]], Dict[str, Any]):
         """
         :param next_period: int eg: 24001
         :param next_weekday: int eg: [1 | 3 | 6]
         :param show_details: ['en' | 'zh'] str flag to output details about the prediction, default is None
         :param window_size: int, the default is 15
+        :param use_index: weather use index to predict, default is False.
         """
         predictions = []
-        predictions.extend(self.predict_by_last_period(next_period=next_period,
-                                                       show_details=show_details,
-                                                       window_size=window_size))
-        predictions.extend(self.predict_by_same_period(next_period=next_period,
-                                                       show_details=show_details,
-                                                       window_size=window_size))
-        predictions.extend(self.predict_by_last_weekday(next_weekday=next_weekday,
-                                                        next_period=next_period,
-                                                        show_details=show_details,
-                                                        window_size=window_size))
+        features = {}
+        prediction_lottery, prediction_feature = self.predict_by_last_period(next_period=next_period,
+                                                                             show_details=show_details,
+                                                                             window_size=window_size,
+                                                                             use_index=use_index)
+        predictions.extend(prediction_lottery)
+        features.update(prediction_feature)
+        prediction_lottery, prediction_feature = self.predict_by_same_period(next_period=next_period,
+                                                                             show_details=show_details,
+                                                                             window_size=window_size,
+                                                                             use_index=use_index)
+        predictions.extend(prediction_lottery)
+        features.update(prediction_feature)
+        prediction_lottery, prediction_feature = self.predict_by_last_weekday(next_weekday=next_weekday,
+                                                                              next_period=next_period,
+                                                                              show_details=show_details,
+                                                                              window_size=window_size,
+                                                                              use_index=use_index)
+        predictions.extend(prediction_lottery)
+        features.update(prediction_feature)
 
         if show_details:
             self.detail_log(app_log=self.app_log, show_details=show_details,
@@ -1647,7 +1724,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                             zh="\n以下是初步预测:")
             for data in predictions:
                 self.app_log.info(', '.join(map(str, data)))
-        return predictions
+        return predictions, features
 
     def analyze_predict(
             self,
@@ -1666,8 +1743,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en="Make initial predictions using model predictions",
                         zh="使用模型预测进行初步预测")
-        predict_data = self.model_predict(next_period=next_period, next_weekday=next_weekday,
-                                          show_details=None, window_size=window_size)
+        predict_data, feature_data = self.model_predict(next_period=next_period, next_weekday=next_weekday,
+                                                        show_details=None, window_size=window_size)
         for data in predict_data:
             self.detail_log(app_log=self.app_log, show_details=show_details,
                             en=', '.join(f'{num:>2}' for num in data),
@@ -1685,6 +1762,37 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                         zh=f"模型预测后区数字: {sorted(predict_back_set)}, 数量: {len(predict_back_set)}")
 
         exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(predict_front_set)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict exclude front: {sorted(exclude_front_set)}, size: {len(exclude_front_set)}",
+                        zh=f"模型预测前区排除数字: {sorted(exclude_front_set)}, 数量: {len(exclude_front_set)}")
+
+        exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(predict_back_set)
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict exclude front: {sorted(exclude_back_set)}, size: {len(exclude_back_set)}",
+                        zh=f"模型预测后区排除数字: {sorted(exclude_back_set)}, 数量: {len(exclude_back_set)}")
+
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en="Prediction by unique subscript",
+                        zh="通过唯一下标预测")
+        predict_data_by_index, _ = self.model_predict(next_period=next_period, next_weekday=next_weekday,
+                                                      show_details=None, window_size=window_size, use_index=True)
+        for data in predict_data_by_index:
+            self.detail_log(app_log=self.app_log, show_details=show_details,
+                            en=', '.join(f'{num:>2}' for num in data),
+                            zh=', '.join(f'{num:>2}' for num in data))
+        predict_data_front_index = [self.calculate_front(data) for data in predict_data_by_index]
+        predict_front_set_index = {num for data in predict_data_front_index for num in data}
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict front: {sorted(predict_front_set_index)}, size: {len(predict_front_set_index)}",
+                        zh=f"模型预测前区数字: {sorted(predict_front_set_index)}, 数量: {len(predict_front_set_index)}")
+
+        predict_data_back_index = [self.calculate_back(data) for data in predict_data_by_index]
+        predict_back_set_index = {num for data in predict_data_back_index for num in data}
+        self.detail_log(app_log=self.app_log, show_details=show_details,
+                        en=f"model predict back: {sorted(predict_back_set_index)}, size: {len(predict_back_set_index)}",
+                        zh=f"模型预测后区数字: {sorted(predict_back_set_index)}, 数量: {len(predict_back_set_index)}")
+
+        exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(predict_front_set_index)
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"model predict exclude front: {sorted(exclude_front_set)}, size: {len(exclude_front_set)}",
                         zh=f"模型预测前区排除数字: {sorted(exclude_front_set)}, 数量: {len(exclude_front_set)}")
