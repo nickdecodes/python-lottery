@@ -54,42 +54,6 @@ class CalculateUtil(ABC):
             return math.ceil(n)
 
     @staticmethod
-    def longest_increasing_subsequence(numeric_sequence: List[int]) -> List[int]:
-        """
-        Finds the longest increasing subsequence in a given numeric sequence.
-
-        Args:
-        numeric_sequence (List[int]): The input list of integers.
-
-        Returns:
-        List[int]: The longest increasing subsequence.
-        """
-        n = len(numeric_sequence)
-        dp = [1] * n
-
-        # Fill dp array with lengths of LIS ending at each index
-        for i in range(1, n):
-            for j in range(0, i):
-                if numeric_sequence[i] > numeric_sequence[j]:
-                    dp[i] = max(dp[i], dp[j] + 1)
-
-        lis_length = max(dp)
-        lis = []
-
-        # Find the index of the maximum value in dp array
-        max_index = dp.index(lis_length)
-        lis.append(numeric_sequence[max_index])
-        current_length = lis_length - 1
-
-        # Trace back the sequence to find the LIS
-        for i in range(max_index - 1, -1, -1):
-            if dp[i] == current_length and numeric_sequence[i] < lis[-1]:
-                lis.append(numeric_sequence[i])
-                current_length -= 1
-
-        return list(reversed(lis))
-
-    @staticmethod
     def encode_combination(combination: List[int], max_n: int = 35) -> int:
         """
         Encodes a combination of k numbers selected from 1 to max_n into a unique index.
@@ -148,6 +112,42 @@ class CalculateUtil(ABC):
             current_n -= 1
 
         return combination
+
+    @staticmethod
+    def longest_increasing_subsequence(numeric_sequence: List[int]) -> List[int]:
+        """
+        Finds the longest increasing subsequence in a given numeric sequence.
+
+        Args:
+        numeric_sequence (List[int]): The input list of integers.
+
+        Returns:
+        List[int]: The longest increasing subsequence.
+        """
+        n = len(numeric_sequence)
+        dp = [1] * n
+
+        # Fill dp array with lengths of LIS ending at each index
+        for i in range(1, n):
+            for j in range(0, i):
+                if numeric_sequence[i] > numeric_sequence[j]:
+                    dp[i] = max(dp[i], dp[j] + 1)
+
+        lis_length = max(dp)
+        lis = []
+
+        # Find the index of the maximum value in dp array
+        max_index = dp.index(lis_length)
+        lis.append(numeric_sequence[max_index])
+        current_length = lis_length - 1
+
+        # Trace back the sequence to find the LIS
+        for i in range(max_index - 1, -1, -1):
+            if dp[i] == current_length and numeric_sequence[i] < lis[-1]:
+                lis.append(numeric_sequence[i])
+                current_length -= 1
+
+        return list(reversed(lis))
 
     @staticmethod
     def longest_decreasing_subsequence(numeric_sequence: List[int]) -> List[int]:

@@ -20,7 +20,7 @@ def readme():
 
 setup(
     name='lottokit',
-    version='1.9',
+    version='2.0',
     keywords=['lottokit', 'lottery'],
     packages=find_packages(),
     package_data={"": ["LICENSE", "NOTICE"]},

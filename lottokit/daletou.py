@@ -1506,7 +1506,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                     matrix = [self.encode_combination(d.back, max_n=self.back_vocab_size) for d in last_window_data]
 
                 # Apply the transposed matrix to each predictor and generate predictions
-                predictions = [predictor(matrix) for predictor in model_functions]
+                predictions = [(predictor(matrix), ) for predictor in model_functions]
             else:
                 if zone == 'front':
                     matrix = [d.front for d in last_window_data]
@@ -1549,12 +1549,14 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
 
         predictions_all = []
         for i in range(len(model_functions)):
+            tmp_front = [min(self.front_vocab_size, max(num, 1)) for num in predictions_front[i]]
+            tmp_back = [min(self.back_vocab_size, max(num, 1)) for num in predictions_back[i]]
             if use_index is True:
-                tmp1 = self.decode_combination(predictions_front[i], k=self.front_size, max_n=self.front_vocab_size)
-                tmp2 = self.decode_combination(predictions_back[i], k=self.back_size, max_n=self.back_vocab_size)
+                tmp1 = self.decode_combination(tmp_front[0], k=self.front_size, max_n=self.front_vocab_size)
+                tmp2 = self.decode_combination(tmp_back[0], k=self.back_size, max_n=self.back_vocab_size)
             else:
-                tmp1 = predictions_front[i]
-                tmp2 = predictions_back[i]
+                tmp1 = tmp_front
+                tmp2 = tmp_back
             predictions_all.append(tmp1 + tmp2)
 
         # Create a list of Lottery objects based on the predictions
@@ -1745,110 +1747,47 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                         zh="使用模型预测进行初步预测")
         predict_data, feature_data = self.model_predict(next_period=next_period, next_weekday=next_weekday,
                                                         show_details=None, window_size=window_size)
-        for data in predict_data:
+        predict_set = [[set(), set()] for _ in range(3)]
+        predict_data_front, predict_data_back = [], []
+        for ind, data in enumerate(predict_data):
             self.detail_log(app_log=self.app_log, show_details=show_details,
                             en=', '.join(f'{num:>2}' for num in data),
                             zh=', '.join(f'{num:>2}' for num in data))
-        predict_data_front = [self.calculate_front(data) for data in predict_data]
-        predict_front_set = {num for data in predict_data_front for num in data}
+            front_data = self.calculate_front(data)
+            back_data = self.calculate_back(data)
+            if ind in [0, 3, 6]:
+                predict_set[0][0].update(front_data)
+                predict_set[0][1].update(back_data)
+            elif ind in [1, 4, 7]:
+                predict_set[1][0].update(front_data)
+                predict_set[1][1].update(back_data)
+            else:
+                predict_set[2][0].update(front_data)
+                predict_set[2][1].update(back_data)
+            predict_data_front.append(front_data)
+            predict_data_back.append(back_data)
+
+        predict_front_set = {num for num in predict_set[0][0] | predict_set[1][0] | predict_set[2][0]}
+        predict_back_set = {num for num in predict_set[0][1] | predict_set[1][1] | predict_set[2][1]}
+
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"model predict front: {sorted(predict_front_set)}, size: {len(predict_front_set)}",
                         zh=f"模型预测前区数字: {sorted(predict_front_set)}, 数量: {len(predict_front_set)}")
-
-        predict_data_back = [self.calculate_back(data) for data in predict_data]
-        predict_back_set = {num for data in predict_data_back for num in data}
         self.detail_log(app_log=self.app_log, show_details=show_details,
                         en=f"model predict back: {sorted(predict_back_set)}, size: {len(predict_back_set)}",
                         zh=f"模型预测后区数字: {sorted(predict_back_set)}, 数量: {len(predict_back_set)}")
 
-        exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(predict_front_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"model predict exclude front: {sorted(exclude_front_set)}, size: {len(exclude_front_set)}",
-                        zh=f"模型预测前区排除数字: {sorted(exclude_front_set)}, 数量: {len(exclude_front_set)}")
-
-        exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(predict_back_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"model predict exclude front: {sorted(exclude_back_set)}, size: {len(exclude_back_set)}",
-                        zh=f"模型预测后区排除数字: {sorted(exclude_back_set)}, 数量: {len(exclude_back_set)}")
-
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en="Prediction by unique subscript",
-                        zh="通过唯一下标预测")
-        predict_data_by_index, _ = self.model_predict(next_period=next_period, next_weekday=next_weekday,
-                                                      show_details=None, window_size=window_size, use_index=True)
-        for data in predict_data_by_index:
+        for ind, val in enumerate(predict_set):
             self.detail_log(app_log=self.app_log, show_details=show_details,
-                            en=', '.join(f'{num:>2}' for num in data),
-                            zh=', '.join(f'{num:>2}' for num in data))
-        predict_data_front_index = [self.calculate_front(data) for data in predict_data_by_index]
-        predict_front_set_index = {num for data in predict_data_front_index for num in data}
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"model predict front: {sorted(predict_front_set_index)}, size: {len(predict_front_set_index)}",
-                        zh=f"模型预测前区数字: {sorted(predict_front_set_index)}, 数量: {len(predict_front_set_index)}")
-
-        predict_data_back_index = [self.calculate_back(data) for data in predict_data_by_index]
-        predict_back_set_index = {num for data in predict_data_back_index for num in data}
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"model predict back: {sorted(predict_back_set_index)}, size: {len(predict_back_set_index)}",
-                        zh=f"模型预测后区数字: {sorted(predict_back_set_index)}, 数量: {len(predict_back_set_index)}")
-
-        exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(predict_front_set_index)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"model predict exclude front: {sorted(exclude_front_set)}, size: {len(exclude_front_set)}",
-                        zh=f"模型预测前区排除数字: {sorted(exclude_front_set)}, 数量: {len(exclude_front_set)}")
-
-        exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(predict_back_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"model predict exclude front: {sorted(exclude_back_set)}, size: {len(exclude_back_set)}",
-                        zh=f"模型预测后区排除数字: {sorted(exclude_back_set)}, 数量: {len(exclude_back_set)}")
-
-        # 2 pass predict
-        self.detail_log(app_log=self.app_log, show_details=show_details, en="", zh="")
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en="The model prediction results are used for secondary prediction",
-                        zh="使用模型预测结果进行二次预测")
-        matrix_flip = [[predict_data[j][i] for j in range(len(predict_data))] for i in range(len(predict_data[0]))]
-        # Apply the transposed matrix to each predictor and generate predictions
-        two_pass_predictions = [
-            tuple(predictor(seq) for seq in matrix_flip) for predictor in [
-                self.exponential_moving_average_next_value,
-                self.linear_regression_next_value,
-                self.random_forest_regressor_next_value,
-            ]
-        ]
-        for data in two_pass_predictions:
+                            en=f"model{ind + 1} predict front: {sorted(predict_set[ind][0])}, "
+                               f"size: {len(predict_set[ind][0])}",
+                            zh=f"模型{ind + 1}预测前区数字: {sorted(predict_set[ind][0])}, "
+                               f"数量: {len(predict_set[ind][0])}")
             self.detail_log(app_log=self.app_log, show_details=show_details,
-                            en=', '.join(f'{num:>2}' for num in data),
-                            zh=', '.join(f'{num:>2}' for num in data))
-        two_pass_predict_data_front = [self.calculate_front(data) for data in two_pass_predictions]
-        two_pass_predict_front_set = {num for data in two_pass_predict_data_front for num in data}
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"two pass model predict front: {sorted(two_pass_predict_front_set)}, "
-                           f"size: {len(two_pass_predict_front_set)}",
-                        zh=f"二次模型预测前区数字: {sorted(two_pass_predict_front_set)}, "
-                           f"数量: {len(two_pass_predict_front_set)}")
-
-        two_pass_predict_data_back = [self.calculate_back(data) for data in two_pass_predictions]
-        two_pass_predict_back_set = {num for data in two_pass_predict_data_back for num in data}
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"two pass model predict back: {sorted(two_pass_predict_back_set)}, "
-                           f"size: {len(two_pass_predict_back_set)}",
-                        zh=f"二次模型预测后区数字: {sorted(two_pass_predict_back_set)}, "
-                           f"数量: {len(two_pass_predict_back_set)}")
-
-        two_pass_exclude_front_set = set(range(1, self.front_vocab_size + 1)).difference(two_pass_predict_front_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"two pass model predict exclude front: {sorted(two_pass_exclude_front_set)}, "
-                           f"size: {len(two_pass_exclude_front_set)}",
-                        zh=f"二次模型预测前区排除数字: {sorted(two_pass_exclude_front_set)}, "
-                           f"数量: {len(two_pass_exclude_front_set)}")
-
-        two_pass_exclude_back_set = set(range(1, self.back_vocab_size + 1)).difference(two_pass_predict_back_set)
-        self.detail_log(app_log=self.app_log, show_details=show_details,
-                        en=f"two pass model predict exclude front: {sorted(two_pass_exclude_back_set)}, "
-                           f"size: {len(two_pass_exclude_back_set)}",
-                        zh=f"二次模型预测后区排除数字: {sorted(two_pass_exclude_back_set)}, "
-                           f"数量: {len(two_pass_exclude_back_set)}")
+                            en=f"model{ind + 1} predict back: {sorted(predict_set[ind][1])}, "
+                               f"size: {len(predict_set[ind][1])}",
+                            zh=f"模型{ind + 1}预测后区数字: {sorted(predict_set[ind][1])}, "
+                               f"数量: {len(predict_set[ind][1])}")
 
         # ready data
         history_data = self.get_previous_history_data(next_period=next_period)
@@ -1880,7 +1819,7 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
                         en="Now, Will analyze the predictions..., Then adjust data",
                         zh="现在，将会分析这些预测…，然后调整数据")
         # Calculate available numbers avoiding both kill and banker numbers for the front
-        predictions = []
+        predictions = predict_data
         random.seed(self.calculate_sum_total(self.calculate_front(history_data[-1])))
 
         # Combine front and back combinations
@@ -1916,8 +1855,8 @@ class Daletou(IOUtil, ModelUtil, SpiderUtil, CalculateUtil, AnalyzeUtil):
             back_zone_frequency = Counter(back_zone)
 
             # Sorting the counts
-            sorted_front_zone_frequency = sorted(front_zone_frequency.items(), key=lambda x: x[1], reverse=True)
-            sorted_back_zone_frequency = sorted(back_zone_frequency.items(), key=lambda x: x[1], reverse=True)
+            sorted_front_zone_frequency = sorted(front_zone_frequency.items(), key=lambda x: (-x[1], x[0]))
+            sorted_back_zone_frequency = sorted(back_zone_frequency.items(), key=lambda x: (-x[1], x[0]))
 
             # Printing the results
             self.detail_log(app_log=self.app_log, show_details=show_details,

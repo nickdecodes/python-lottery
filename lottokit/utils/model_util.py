@@ -121,7 +121,7 @@ class ModelUtil:
             # If there's no enough data to calculate difference, use the last EMA as the prediction
             predicted_next_value = ema.iloc[-1]
 
-        rsi = ModelUtil.relative_strength_index(numeric_sequence, period=len(numeric_sequence))
+        rsi = ModelUtil.relative_strength_index(numeric_sequence, period=5)
         # Return the predicted next value rounded to the nearest integer
         if rsi <= 50:
             return math.ceil(predicted_next_value)
@@ -131,7 +131,7 @@ class ModelUtil:
             return math.floor(predicted_next_value)
 
     @staticmethod
-    def linear_regression_next_value(numeric_sequence: List[int]) -> int:
+    def linear_regression_next_value(numeric_sequence: List[int], degree: int = 1) -> int:
         """
         Predicts the next value in a sequence using linear regression.
 
@@ -141,6 +141,7 @@ class ModelUtil:
         a model to the sequence and examining the slope of the line.
 
         :param numeric_sequence: A list or sequence of numbers to model.
+        :param degree: degree for linear regression. Default is 1.
         :return: The predicted next value in the sequence as an integer.
         :raises ValueError: If the input sequence is empty or too short for regression analysis.
         """
@@ -156,13 +157,19 @@ class ModelUtil:
         index = np.array(range(len(data))).reshape(-1, 1)
 
         # Create a LinearRegression model and fit it to the data
+        poly_features = PolynomialFeatures(degree=degree)
+        index_poly = poly_features.fit_transform(index)
         model = LinearRegression()
-        model.fit(index, data)
+        # model.fit(index, data)
+        model.fit(index_poly, data)
 
-        # Predict the next value in the sequence using the fitted model
-        prediction = model.predict([[len(data)]])[0][0]
+        # Predict the next value in the sequence
+        next_index = np.array([len(data)]).reshape(-1, 1)  # Next index to predict
+        future_index_poly = poly_features.transform(next_index)
+        # prediction = model.predict(next_index)[0]
+        prediction = model.predict(future_index_poly)[0]
 
-        # Return the predicted value as an integer
+        # Return the predicted value rounded to the nearest integer
         return CalculateUtil.real_round(prediction)
 
     @staticmethod
@@ -304,7 +311,7 @@ class ModelUtil:
         return pred_y
 
     @staticmethod
-    def random_forest_regressor_next_value(numeric_sequence: List[int]) -> int:
+    def random_forest_regressor_next_value(numeric_sequence: List[int], degree: int = 2) -> int:
         """
         Predicts the next value in a sequence using a Random Forest Regressor.
 
@@ -315,24 +322,30 @@ class ModelUtil:
         next value based on the observed trend.
 
         :param numeric_sequence: A list or sequence of numbers to model.
+        :param degree: degree for Random Forest Regressor. Default is 1.
         :return: The predicted next value in the sequence as an integer.
         """
         # Convert the numeric sequence into a numpy array and reshape for sklearn
         data = np.array(numeric_sequence).reshape(-1, 1)
 
         # Create an array representing time or the independent variable, reshaped as a column
-        time_feature = np.array(range(len(data))).reshape(-1, 1)
+        index = np.array(range(len(data))).reshape(-1, 1)
 
         # Create a RandomForestRegressor model and fit it to the data
+        poly_features = PolynomialFeatures(degree=degree)
+        index_poly = poly_features.fit_transform(index)
         model = RandomForestRegressor()
-        model.fit(time_feature, data.ravel())  # Flatten the array to fit the model
+        # model.fit(index, data)
+        model.fit(index_poly, data.ravel())  # Flatten the array to fit the model
 
         # Predict the next value in the sequence using the fitted model
-        future_time = np.array([len(data)]).reshape(-1, 1)
-        future_pred = model.predict(future_time)
+        next_index = np.array([len(data)]).reshape(-1, 1)  # Next index to predict
+        future_index_poly = poly_features.transform(next_index)
+        # prediction = model.predict(next_index)[0]
+        prediction = model.predict(future_index_poly)[0]
 
         # Return the predicted value as an integer
-        return CalculateUtil.real_round(future_pred[0])
+        return CalculateUtil.real_round(prediction)
 
     @staticmethod
     def relative_strength_index(numeric_sequence: List[int], period: int = 14) -> float:
